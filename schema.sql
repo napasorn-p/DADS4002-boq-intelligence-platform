@@ -1,0 +1,4 @@
+-- schema.sql
+-- Table definitions for the construction-material price database
+-- (data source: TPSO, index-api.tpso.go.th).
+-- Not written yet; tables will be added once the ER diagram is agreed.
