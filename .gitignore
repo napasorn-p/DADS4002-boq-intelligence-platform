@@ -1,0 +1,17 @@
+# Raw data pulled from TPSO API (do not commit)
+data_raw/
+
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Runtime output
+logs/
+exports/
+
+# Jupyter
+.ipynb_checkpoints/
