@@ -21,6 +21,9 @@ Retailer links:
 
 ## Setup
 
+คู่มือภาษาไทยแบบละเอียดทีละขั้น (ติดตั้ง → นำเข้าข้อมูล → BOQ → Dashboard → Notebook → ส่งงาน): [`docs/USER_GUIDE_TH.md`](docs/USER_GUIDE_TH.md)
+
+
 1. Install Python 3.10+ and MySQL 8+. (Check with `python -V` inside the virtual environment.)
 2. Create and activate a virtual environment, then install dependencies:
 
