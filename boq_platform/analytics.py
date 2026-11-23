@@ -2,6 +2,9 @@
 from decimal import Decimal
 
 from .config import RETAIL_MAX_AGE_DAYS
+
+# BOQ unit price this far (in %) from the official TPSO/MOC price triggers an action.
+OFFICIAL_GAP_PCT = 10
 from .db import query
 
 
@@ -111,18 +114,61 @@ def retailer_basket_comparison(project_id, max_age_days=RETAIL_MAX_AGE_DAYS):
         ORDER BY full_coverage DESC,covered_total ASC,coverage_ratio DESC""", params)
 
 
+def official_reference_costs(project_id):
+    """Dataset 2: latest official province price per matched BOQ line vs the BOQ unit price.
+
+    Only lines whose matched material has an official price in the project's
+    province with the same unit are compared.
+    """
+    return query("""WITH latest AS (
+            SELECT bi.item_id, COALESCE(pr.room_name,'(ไม่ระบุพื้นที่)') AS room_name,
+                   m.canonical_name AS material_name, bi.quantity, bi.input_unit,
+                   bi.budget_unit_price, po.price AS official_unit_price,
+                   po.period_year, po.period_month,
+                   ROW_NUMBER() OVER (PARTITION BY bi.item_id
+                       ORDER BY po.observation_date DESC, po.retrieved_at DESC) AS rn
+            FROM boq_items bi
+            JOIN boq_projects p ON p.project_id=bi.project_id
+            JOIN materials m ON m.material_id=bi.material_id
+            LEFT JOIN project_rooms pr ON pr.room_id=bi.room_id
+            JOIN price_observations po ON po.material_id=bi.material_id AND po.unit=bi.input_unit
+                 AND po.province_code=p.province_code AND po.quality_status='valid'
+            JOIN price_sources ps ON ps.source_id=po.source_id AND ps.source_kind='official'
+            WHERE bi.project_id=%s AND bi.is_deleted=0
+        )
+        SELECT item_id, room_name, material_name, quantity, input_unit, budget_unit_price,
+               official_unit_price, period_year, period_month,
+               quantity*official_unit_price AS official_line_cost,
+               quantity*budget_unit_price AS boq_line_cost,
+               quantity*(budget_unit_price-official_unit_price) AS diff_vs_official,
+               CASE WHEN budget_unit_price IS NULL OR official_unit_price=0 THEN NULL
+                    ELSE (budget_unit_price-official_unit_price)/official_unit_price*100 END AS diff_pct
+        FROM latest WHERE rn=1
+        ORDER BY diff_vs_official IS NULL, diff_vs_official DESC, item_id""", (project_id,))
+
+
 def official_price_trends(project_id):
-    return query("""WITH ranked AS (
-        SELECT bi.item_id,m.canonical_name,po.price,po.period_year,po.period_month,
-               ROW_NUMBER() OVER (PARTITION BY bi.item_id ORDER BY po.period_year DESC,po.period_month DESC) AS rn
-        FROM boq_items bi JOIN materials m ON m.material_id=bi.material_id
-        JOIN price_observations po ON po.material_id=m.material_id
-        JOIN price_sources ps ON ps.source_id=po.source_id AND ps.source_kind='official'
-        WHERE bi.project_id=%s AND bi.is_deleted=0 AND po.quality_status='valid'
-          AND po.province_code=(SELECT province_code FROM boq_projects WHERE project_id=%s)
-          AND po.period_year IS NOT NULL AND po.period_month IS NOT NULL
-    ) SELECT item_id,canonical_name,price,period_year,period_month,rn
-      FROM ranked WHERE rn<=2 ORDER BY item_id,rn""", (project_id, project_id))
+    """Latest two DIFFERENT months of official price per BOQ line (same province and unit)."""
+    return query("""WITH per_month AS (
+            SELECT bi.item_id, m.canonical_name, po.price, po.period_year, po.period_month,
+                   ROW_NUMBER() OVER (PARTITION BY bi.item_id, po.period_year, po.period_month
+                       ORDER BY po.retrieved_at DESC, po.observation_id DESC) AS dup
+            FROM boq_items bi
+            JOIN boq_projects p ON p.project_id=bi.project_id
+            JOIN materials m ON m.material_id=bi.material_id
+            JOIN price_observations po ON po.material_id=m.material_id AND po.unit=bi.input_unit
+                 AND po.province_code=p.province_code
+            JOIN price_sources ps ON ps.source_id=po.source_id AND ps.source_kind='official'
+            WHERE bi.project_id=%s AND bi.is_deleted=0 AND po.quality_status='valid'
+              AND po.period_year IS NOT NULL AND po.period_month IS NOT NULL
+        ), ranked AS (
+            SELECT item_id, canonical_name, price, period_year, period_month,
+                   ROW_NUMBER() OVER (PARTITION BY item_id
+                       ORDER BY period_year DESC, period_month DESC) AS rn
+            FROM per_month WHERE dup=1
+        )
+        SELECT item_id, canonical_name, price, period_year, period_month, rn
+        FROM ranked WHERE rn<=2 ORDER BY item_id, rn""", (project_id,))
 
 
 def generate_insights(project_id):
@@ -133,6 +179,18 @@ def generate_insights(project_id):
     offers = top_retail_prices_per_item(project_id)
     retailers = retailer_basket_comparison(project_id)
     trends = official_price_trends(project_id)
+    official = official_reference_costs(project_id)
+    official_compared = [row for row in official if row["budget_unit_price"] is not None]
+    official_summary = None
+    if official_compared:
+        boq_total = sum(row["boq_line_cost"] for row in official_compared)
+        ref_total = sum(row["official_line_cost"] for row in official_compared)
+        diff = boq_total - ref_total
+        official_summary = {"lines_compared": len(official_compared),
+                            "lines_total": int(summary["line_count"] or 0),
+                            "boq_cost": boq_total, "official_cost": ref_total,
+                            "diff": diff,
+                            "diff_pct": (diff / ref_total * Decimal("100")) if ref_total else None}
 
     full_baskets = [row for row in retailers if row["full_coverage"]]
     best_basket = full_baskets[0] if full_baskets else None
@@ -194,6 +252,26 @@ def generate_insights(project_id):
         actions.append({"keyword": "MONITOR_PRICE", "priority": "กลาง",
                         "evidence": "ราคาทางการล่าสุดสูงกว่ารอบก่อนของ " + ", ".join(rising[:3]),
                         "next_action": "ตรวจราคาซ้ำก่อนสั่งซื้อ และขอใบเสนอราคาที่มีวันหมดอายุชัดเจน"})
+    above = [row for row in official_compared
+             if row["diff_pct"] is not None and row["diff_pct"] > OFFICIAL_GAP_PCT]
+    below = [row for row in official_compared
+             if row["diff_pct"] is not None and row["diff_pct"] < -OFFICIAL_GAP_PCT]
+    if above:
+        names = ", ".join(f"{row['material_name']} (+{row['diff_pct']:.0f}%)" for row in above[:3])
+        gap = sum(row["diff_vs_official"] for row in above)
+        actions.append({"keyword": "NEGOTIATE_PRICE", "priority": "สูง",
+                        "evidence": f"ราคา BOQ สูงกว่าราคากลาง สนค. เกิน {OFFICIAL_GAP_PCT}%: {names} "
+                                    f"(ส่วนต่างรวม ฿{gap:,.2f})",
+                        "next_action": "ใช้ราคากลาง สนค. เดือนล่าสุดเป็นหลักฐานต่อรองกับผู้รับเหมา/ร้าน หรือขอใบเสนอราคาเพิ่ม"})
+    if below:
+        names = ", ".join(f"{row['material_name']} ({row['diff_pct']:.0f}%)" for row in below[:3])
+        actions.append({"keyword": "CHECK_UNDERBUDGET", "priority": "กลาง",
+                        "evidence": f"ราคา BOQ ต่ำกว่าราคากลาง สนค. เกิน {OFFICIAL_GAP_PCT}%: {names}",
+                        "next_action": "ตรวจว่าราคา BOQ เก่าหรือสเปกต่ำกว่าที่ต้องการหรือไม่ แล้วเผื่องบส่วนนี้"})
+    if summary["line_count"] and summary.get("province_code") and not official:
+        actions.append({"keyword": "LOAD_OFFICIAL_PRICE", "priority": "กลาง",
+                        "evidence": "ยังไม่มีราคากลาง สนค. ที่ตรงวัสดุ/หน่วย/จังหวัดของโครงการ",
+                        "next_action": "ดึง Dataset 2 ของจังหวัดนี้ (เมนู 2) แล้วยืนยันการจับคู่วัสดุ BOQ กับรหัส สนค."})
     if baseline and best_basket and savings is not None:
         if savings > 0:
             actions.append({"keyword": "VALIDATE_SAVING", "priority": "สูง",
@@ -208,9 +286,13 @@ def generate_insights(project_id):
                         "evidence": "ยังไม่พบรายการที่เข้าเงื่อนไขแจ้งเตือน",
                         "next_action": "อัปเดตราคาและทบทวนผลเมื่อมี BOQ หรือข้อมูลร้านค้าเพิ่มเติม"})
 
+    priority_order = {"สูง": 0, "กลาง": 1, "ต่ำ": 2}
+    actions.sort(key=lambda action: priority_order.get(action["priority"], 9))  # stable sort
+
     return {"project": summary, "top_cost_items": top_cost,
             "top_retail_offers": offers, "retailer_baskets": retailers,
             "top_3_retailers": top_3_retailers,
             "best_full_basket": best_basket, "estimated_savings": savings,
             "estimated_savings_pct": savings_pct, "official_trends": trends,
+            "official_reference": official, "official_summary": official_summary,
             "action_plan": actions}

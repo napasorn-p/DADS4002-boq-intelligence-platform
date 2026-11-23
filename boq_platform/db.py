@@ -2,6 +2,7 @@ from contextlib import contextmanager
 
 import mysql.connector
 
+from .audit import transaction_buffer
 from .config import DB_CONFIG
 
 
@@ -12,13 +13,19 @@ def connect():
 
 @contextmanager
 def connection():
+    """One transaction: commit on success, rollback on error.
+
+    Audit lines raised inside the block are written after the commit/rollback.
+    """
     conn = connect()
     try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
+        with transaction_buffer():
+            try:
+                yield conn
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
     finally:
         conn.close()
 

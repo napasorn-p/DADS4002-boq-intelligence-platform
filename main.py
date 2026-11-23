@@ -5,11 +5,13 @@ from boq_platform.analytics import generate_insights
 from boq_platform.audit import append_event
 from boq_platform.dashboard import print_dashboard
 from boq_platform.db import connection, query
-from boq_platform.ingest import import_boq_rows, import_moc_prices, import_retail_csv, read_boq_excel
+from boq_platform.ingest import import_moc_prices, import_retail_csv, read_boq_excel
 from boq_platform.projects import (add_boq_item, add_room, confirm_boq_match,
-                                  create_project, delete_boq_item, list_boq_items,
+                                  create_project, delete_boq_item, import_boq_rows, list_boq_items,
                                   update_boq_item)
-from boq_platform.quality_review import list_price_review_queue, resolve_price_review
+from boq_platform.quality_review import (confirm_observation_match, list_price_review_queue,
+                                         list_unmatched_observations, observation_candidates,
+                                         resolve_price_review)
 
 
 def _input_int(label, default=None):
@@ -50,7 +52,9 @@ def _import_official():
     from_year = _input_int("ปีเริ่มต้น ค.ศ.")
     to_year = _input_int("ปีสิ้นสุด ค.ศ.")
     result = import_moc_prices(province, from_year, to_year)
-    print(f"นำเข้า {result['rows_saved']} แถว, ปฏิเสธ {result['rows_rejected']} แถว; raw: {result['raw_file'].name}")
+    print(f"นำเข้าใหม่ {result['rows_inserted']} แถว, ราคาถูกแก้ {result['rows_revised']} แถว, "
+          f"ซ้ำเดิม {result['rows_unchanged']} แถว, ปฏิเสธ {result['rows_rejected']} แถว; "
+          f"raw: {result['raw_file'].name}")
 
 
 def _import_retail():
@@ -59,15 +63,18 @@ def _import_retail():
         print("ไม่พบไฟล์")
         return
     result = import_retail_csv(path)
-    print(f"นำเข้า {result['rows_saved']} แถว, ไม่ผ่าน {result['rows_rejected']} แถว, "
+    print(f"นำเข้าใหม่ {result['rows_saved']} แถว, ราคาถูกแก้ {result['rows_revised']} แถว, "
+          f"ซ้ำเดิม {result['rows_unchanged']} แถว, ไม่ผ่าน {result['rows_rejected']} แถว, "
           f"ยังไม่จับคู่ {result['rows_unmatched']} แถว")
+    if result["rows_unmatched"]:
+        print("ราคาที่ยังไม่จับคู่จะไม่เข้า Top 3 — ใช้เมนู 10 เพื่อจับคู่ (ระบบจำ SKU ไว้ใช้ครั้งต่อไป)")
 
 
 def _import_excel():
     project_id = _project_id()
     if not project_id:
         return
-    path = input("พาธ Excel BOQ: ").strip().strip('"')
+    path = input("พาธไฟล์ BOQ (.xlsx หรือ .csv): ").strip().strip('"')
     if not Path(path).is_file():
         print("ไม่พบไฟล์")
         return
@@ -124,9 +131,11 @@ def _show_items():
     if action == "u":
         item_id = _input_int("Item ID")
         quantity = input("จำนวนใหม่ (เว้นว่าง=เดิม): ").strip() or None
-        budget = input("ราคา BOQ ใหม่ (เว้นว่าง=เดิม): ").strip() or None
-        update_boq_item(item_id, quantity=quantity, budget_unit_price=budget)
-        print("อัปเดตรายการแล้ว")
+        budget = input("ราคา BOQ ใหม่ (เว้นว่าง=เดิม, - = ล้างค่า): ").strip() or None
+        if update_boq_item(item_id, quantity=quantity, budget_unit_price=budget):
+            print("อัปเดตรายการแล้ว")
+        else:
+            print("ไม่มีการเปลี่ยนแปลง หรือไม่พบ Item ID นี้")
     elif action == "d":
         item_id = _input_int("Item ID")
         if input(f"พิมพ์ DELETE {item_id} เพื่อยืนยัน: ").strip() == f"DELETE {item_id}":
@@ -156,6 +165,32 @@ def _review_prices():
         print("บันทึกผลตรวจแล้ว")
     else:
         print("ไม่พบรายการที่รอตรวจตาม ID นี้")
+
+
+def _match_retail_prices():
+    rows = list_unmatched_observations()
+    if not rows:
+        print("ไม่มีราคาร้านค้าที่รอจับคู่")
+        return
+    for row in rows:
+        print(f"{row['observation_id']}: {row['source_name']} | {row['product_name']} | "
+              f"{row['specification'] or '-'} | {row['price']} / {row['unit']} | SKU {row['source_product_code'] or '-'}")
+    observation_id = _input_int("Observation ID ที่ต้องการจับคู่")
+    observation = next((row for row in rows if row["observation_id"] == observation_id), None)
+    if not observation:
+        print("ไม่พบ ID นี้ในรายการ")
+        return
+    candidates = observation_candidates(observation)
+    if not candidates:
+        print("ไม่มีวัสดุที่หน่วย/สเปกเข้ากันได้ — ดึง Dataset 2 เพิ่ม หรือแก้หน่วยใน CSV แล้วนำเข้าใหม่")
+        return
+    for i, candidate in enumerate(candidates, start=1):
+        print(f" {i}. [{candidate['material_code'] or '-'}] {candidate['canonical_name']} / "
+              f"{candidate['standard_unit']} ({candidate['confidence_score']:.0%}, {candidate['match_method']})")
+    choice = input("เลือกวัสดุที่ตรง (เลข) หรือ Enter ยกเลิก: ").strip()
+    if choice.isdigit() and 1 <= int(choice) <= len(candidates):
+        confirm_observation_match(observation_id, candidates[int(choice)-1]["material_id"])
+        print("จับคู่แล้ว และจำ SKU ของร้านไว้สำหรับการนำเข้าครั้งต่อไป")
 
 
 def _check_row_counts():
@@ -198,12 +233,13 @@ def main():
         "1": ("สร้างโครงการ", _create_project),
         "2": ("ดึงราคาทางการ Dataset 2 จาก MOC API", _import_official),
         "3": ("นำเข้าราคาจากร้านค้า CSV snapshot", _import_retail),
-        "4": ("นำเข้า BOQ จาก Excel", _import_excel),
+        "4": ("นำเข้า BOQ จากไฟล์ (.xlsx / .csv)", _import_excel),
         "5": ("เพิ่ม BOQ แบบกรอกเอง (จบด้วย DONE)", _manual_entry),
         "6": ("ดู / แก้ไข / ลบ BOQ items", _show_items),
         "7": ("Dashboard + Insight + Action Plan", _show_dashboard),
         "8": ("ตรวจ/อนุมัติราคาที่ถูกพักรอตรวจ", _review_prices),
         "9": ("ตรวจจำนวนแถวตามเกณฑ์รายวิชา", _check_row_counts),
+        "10": ("จับคู่ราคาร้านค้าที่ยังไม่จับคู่กับวัสดุ", _match_retail_prices),
     }
     while True:
         print("\n=== BOQ Intelligence Platform ===")

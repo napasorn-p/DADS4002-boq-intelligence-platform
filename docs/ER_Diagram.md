@@ -64,7 +64,7 @@ erDiagram
         bigint room_id PK
         bigint project_id FK
         varchar room_name
-        varchar floor_label
+        varchar floor_label "NOT NULL, default empty string"
     }
     BOQ_ITEMS {
         bigint item_id PK

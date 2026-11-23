@@ -77,20 +77,23 @@ def parse_date(value, year=None, month=None):
 
 
 def source_hash(source_id, record):
+    """Identity key of one observation: WHO reported WHICH product, WHERE and WHEN.
+
+    Price, VAT, promotion and stock are deliberately left out: if a source revises
+    the price of the same product/area/period (TPSO warns that published prices may
+    be corrected), the re-import updates the existing row instead of creating a
+    second row for the same month.
+    """
+    code = record.get("source_product_code")
     stable = {
         "source_id": source_id,
-        "code": record.get("source_product_code"),
-        "name": normalize_text(record.get("product_name")),
+        "code": code,
+        # The product name only identifies the row when the source has no code.
+        "name": None if code else normalize_text(record.get("product_name")),
         "date": str(record.get("observation_date")),
         "province": record.get("province_code"),
         "branch": normalize_text(record.get("branch_name")),
         "unit": normalize_unit(record.get("unit")),
-        "price": str(record.get("price")),
-        "regular_price": str(record.get("regular_price")),
-        "vat_included": record.get("vat_included"),
-        "shipping_fee": str(record.get("shipping_fee")),
-        "promotion": record.get("promotion_label"),
-        "stock_status": record.get("stock_status"),
     }
     payload = json.dumps(stable, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -131,7 +134,7 @@ def clean_price_record(raw, source_id, *, official=False):
         issues.append("invalid_shipping_fee")
     if raw.get("vat_included") not in (None, "") and vat_value is None:
         issues.append("invalid_vat_flag")
-    # Step 6: flag duplicates by a stable hash; DB import uses this as an idempotency key.
+    # Step 6: identity hash (source+code+area+date+unit); re-imports update, never duplicate.
     cleaned = {
         "source_id": source_id,
         "material_id": None,
@@ -143,8 +146,8 @@ def clean_price_record(raw, source_id, *, official=False):
         "province_name": str(raw.get("province_name") or "").strip() or None,
         "branch_name": str(raw.get("branch_name") or "").strip() or None,
         "observation_date": obs_date,
-        "period_year": obs_date.year if official else None,
-        "period_month": obs_date.month if official else None,
+        "period_year": obs_date.year if official and obs_date else None,
+        "period_month": obs_date.month if official and obs_date else None,
         "unit": unit,
         "price": price,
         "regular_price": regular,

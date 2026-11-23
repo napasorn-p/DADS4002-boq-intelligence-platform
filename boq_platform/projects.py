@@ -2,7 +2,7 @@
 from decimal import Decimal
 
 from .audit import append_event
-from .cleansing import normalize_unit, parse_decimal
+from .cleansing import normalize_text, normalize_unit, parse_decimal
 from .db import connection, query
 from .matching import find_candidates, log_candidate_set, log_match_event
 
@@ -32,7 +32,7 @@ def add_room(project_id, room_name, floor_label=None):
         cursor = conn.cursor()
         cursor.execute("""INSERT INTO project_rooms (project_id,room_name,floor_label)
             VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE room_id=LAST_INSERT_ID(room_id)""",
-            (project_id, room_name.strip(), floor_label or None))
+            (project_id, room_name.strip(), (floor_label or "").strip()))
         return cursor.lastrowid
 
 
@@ -88,7 +88,7 @@ def confirm_boq_match(item_id, material_id, actor="user"):
             raise ValueError("ไม่พบวัสดุปลายทาง")
         if normalize_unit(material[1]) != normalize_unit(input_unit):
             raise ValueError("หน่วยวัสดุไม่ตรงกัน จึงยืนยันการจับคู่ไม่ได้")
-        if input_spec and material[2] and input_spec.strip().lower() != material[2].strip().lower():
+        if input_spec and material[2] and normalize_text(input_spec) != normalize_text(material[2]):
             raise ValueError("สเปกวัสดุไม่ตรงกัน จึงยืนยันการจับคู่ไม่ได้")
         cursor.execute("UPDATE boq_items SET material_id=%s,match_status='USER_CONFIRMED' WHERE item_id=%s", (material_id, item_id))
         log_match_event(cursor, input_name=input_name, input_specification=input_spec,
@@ -139,17 +139,25 @@ def list_boq_items(project_id):
         WHERE bi.project_id=%s AND bi.is_deleted=0 ORDER BY bi.item_id""", (project_id,))
 
 
+CLEAR = "-"  # typed in the edit menu to clear an optional value
+
+
 def update_boq_item(item_id, *, quantity=None, unit=None, budget_unit_price=None,
                     input_name=None, specification=None):
-    parsed_budget = parse_decimal(budget_unit_price) if budget_unit_price is not None else None
-    if budget_unit_price not in (None, "") and parsed_budget is None:
-        raise ValueError("ราคา BOQ ต้องเป็นตัวเลข")
+    """Update given fields; None keeps the old value, "-" clears budget price/spec."""
+    clear_budget = budget_unit_price == CLEAR
+    parsed_budget = None
+    if budget_unit_price not in (None, "", CLEAR):
+        parsed_budget = parse_decimal(budget_unit_price)
+        if parsed_budget is None:
+            raise ValueError("ราคา BOQ ต้องเป็นตัวเลข")
+    clear_spec = specification == CLEAR
     allowed = {"quantity": quantity, "input_unit": normalize_unit(unit) if unit else None,
                "budget_unit_price": parsed_budget,
                "input_name": input_name.strip() if input_name is not None else None,
-               "input_specification": specification.strip() if specification is not None else None}
+               "input_specification": None if clear_spec else (specification.strip() if specification is not None else None)}
     fields = [(key, value) for key, value in allowed.items() if value is not None]
-    if not fields:
+    if not fields and not clear_budget and not clear_spec:
         return 0
     if "quantity" in dict(fields):
         parsed_quantity = parse_decimal(dict(fields)["quantity"])
@@ -158,9 +166,14 @@ def update_boq_item(item_id, *, quantity=None, unit=None, budget_unit_price=None
         fields = [(key, parsed_quantity if key == "quantity" else value) for key, value in fields]
     if "budget_unit_price" in dict(fields) and dict(fields)["budget_unit_price"] is not None and dict(fields)["budget_unit_price"] < 0:
         raise ValueError("ราคา BOQ ต้องไม่ติดลบ")
-    assignments = ",".join(f"{key}=%s" for key, _ in fields)
+    assignments = [f"{key}=%s" for key, _ in fields]
     params = [value for _, value in fields]
-    rematch = any(k in {"input_name", "input_specification", "input_unit"} for k, _ in fields)
+    if clear_budget:
+        assignments.append("budget_unit_price=NULL")
+    if clear_spec:
+        assignments.append("input_specification=NULL")
+    assignments = ",".join(assignments)
+    rematch = clear_spec or any(k in {"input_name", "input_specification", "input_unit"} for k, _ in fields)
     if rematch:
         assignments += ",material_id=NULL,match_status='UNMATCHED'"
     params.append(item_id)
@@ -180,7 +193,9 @@ def update_boq_item(item_id, *, quantity=None, unit=None, budget_unit_price=None
             log_candidate_set(cursor, input_name=name, input_specification=spec,
                               input_unit=item_unit, candidates=candidates,
                               project_id=project_id, item_id=item_id, actor="update_rematch")
-    append_event("boq_item_updated", item_id=item_id, changed_fields=[k for k, _ in fields])
+    changed = [k for k, _ in fields] + (["budget_unit_price(cleared)"] if clear_budget else []) \
+        + (["input_specification(cleared)"] if clear_spec else [])
+    append_event("boq_item_updated", item_id=item_id, changed_fields=changed, updated=bool(updated))
     return updated
 
 

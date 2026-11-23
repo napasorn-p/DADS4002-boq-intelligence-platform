@@ -98,7 +98,9 @@ CREATE TABLE IF NOT EXISTS project_rooms (
     room_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     project_id BIGINT UNSIGNED NOT NULL,
     room_name VARCHAR(120) NOT NULL,
-    floor_label VARCHAR(40) NULL,
+    -- '' instead of NULL: MySQL treats NULLs as distinct, so a NULL here would let
+    -- the same room be inserted again on every re-import.
+    floor_label VARCHAR(40) NOT NULL DEFAULT '',
     PRIMARY KEY (room_id),
     UNIQUE KEY uq_project_room (project_id, room_name, floor_label),
     CONSTRAINT fk_room_project FOREIGN KEY (project_id) REFERENCES boq_projects(project_id)

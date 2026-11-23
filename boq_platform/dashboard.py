@@ -29,10 +29,32 @@ def print_dashboard(insight):
     if insight["best_full_basket"]:
         best = insight["best_full_basket"]
         print(f"ตะกร้าร้านที่ครอบคลุมครบ: {best['source_name']} | {money(best['covered_total'])}")
-        print(f"ส่วนต่างจาก BOQ โดยประมาณ: {money(insight['estimated_savings'])} "
-              f"({f'{insight['estimated_savings_pct']:.2f}%' if insight['estimated_savings_pct'] is not None else 'N/A'})")
+        pct = insight["estimated_savings_pct"]
+        pct_text = f"{pct:.2f}%" if pct is not None else "N/A"
+        print(f"ส่วนต่างจาก BOQ โดยประมาณ: {money(insight['estimated_savings'])} ({pct_text})")
     else:
         print("ตะกร้าร้าน: ยังไม่มีร้านที่มีราคาครบทุกวัสดุที่จับคู่แล้ว จึงยังไม่สรุปยอดประหยัดรวม")
+
+    print("\nเทียบราคา BOQ กับราคากลาง สนค. (Dataset 2, จังหวัดเดียวกัน, เดือนล่าสุด)")
+    official = insight.get("official_summary")
+    if official:
+        pct = official["diff_pct"]
+        direction = "สูงกว่า" if official["diff"] > 0 else "ต่ำกว่า"
+        print(f"เทียบได้ {official['lines_compared']}/{official['lines_total']} รายการ | "
+              f"BOQ {money(official['boq_cost'])} vs ราคากลาง {money(official['official_cost'])}")
+        print(f"BOQ {direction}ราคากลาง {money(abs(official['diff']))}"
+              f"{f' ({abs(pct):.1f}%)' if pct is not None else ''}")
+        rows = [{"item_id": row["item_id"], "material": row["material_name"],
+                 "boq": money(row["budget_unit_price"]), "official": money(row["official_unit_price"]),
+                 "period": f"{row['period_year']}-{row['period_month']:02d}",
+                 "diff": money(row["diff_vs_official"]),
+                 "pct": f"{row['diff_pct']:+.1f}%" if row["diff_pct"] is not None else "N/A"}
+                for row in insight["official_reference"] if row["budget_unit_price"] is not None][:5]
+        print(_table(rows, [("item_id", "ID"), ("material", "วัสดุ"), ("boq", "BOQ/หน่วย"),
+                            ("official", "ราคากลาง/หน่วย"), ("period", "เดือน"),
+                            ("diff", "ส่วนต่างรวม"), ("pct", "%")]))
+    else:
+        print("(ยังไม่มีรายการที่มีทั้งราคา BOQ และราคากลางในจังหวัด/หน่วยเดียวกัน)")
 
     print("\nวัสดุ Top 3 ตามต้นทุน BOQ")
     top = []

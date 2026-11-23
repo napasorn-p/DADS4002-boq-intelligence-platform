@@ -18,7 +18,7 @@ Retailer links:
 
 ## Setup
 
-1. Install Python 3.10+ and MySQL 8+.
+1. Install Python 3.10+ and MySQL 8+. (Check with `python -V` inside the virtual environment.)
 2. Create and activate a virtual environment, then install dependencies:
 
    ```bash
@@ -30,6 +30,9 @@ Retailer links:
 
 3. Copy `.env.example` to `.env` and enter the MySQL connection settings.
 4. Run `schema.sql` in MySQL. It creates the database, tables, and the official/retailer source registry.
+   If you already ran an older version of `schema.sql`, drop and recreate the database
+   (`DROP DATABASE boq_intelligence;` then run `schema.sql` again) — `CREATE TABLE IF NOT EXISTS`
+   does not change existing tables.
 5. Start the integrated Python interface:
 
    ```bash
@@ -46,15 +49,19 @@ Retailer links:
 
 1. Create a project using `house`, `room`, or `item` scope.
 2. Import Dataset 2 using province code and Gregorian year range. The raw API response is saved under `data_raw/`.
-3. Import retailer prices or quotations using `templates/retail_prices_template.csv`.
-4. Import a BOQ Excel file (required fields: item/material name, quantity, unit; optional specification, unit price and room).
+3. Import retailer prices or quotations using `templates/retail_prices_template.csv`. Re-importing the same file is safe: unchanged rows are skipped and corrected prices update the existing row.
+4. Import a BOQ file, `.xlsx` or `.csv` (required fields: item/material name, quantity, unit; optional specification, unit price, room and MOC material code). `templates/boq_template.csv` can be filled in and imported directly.
 5. Enter BOQ lines manually; type `DONE` to finish.
-6. Read/update/soft-delete BOQ lines. Soft delete keeps match evidence and audit history.
-7. Display SQL-based cost insights, retailer price rankings and action plans.
+6. Read/update/soft-delete BOQ lines. Soft delete keeps match evidence and audit history. When editing, leave a field blank to keep it or type `-` to clear the BOQ unit price.
+7. Display SQL-based cost insights: BOQ vs official Dataset 2 price, top-cost lines, retailer Top 3 and action plans.
 8. Review observations held for a human quality decision.
+9. Check row counts against the course's 30-row rule.
+10. Match retailer prices that could not be tied to a material. The store SKU is remembered, so the next snapshot from that store matches automatically.
 
 ## Comparison rules
 
+- **BOQ vs official price (Dataset 2):** each matched BOQ line is compared with the latest official monthly price for the same material, unit and project province. BOQ prices more than 10% above it raise `NEGOTIATE_PRICE`; more than 10% below raise `CHECK_UNDERBUDGET`.
+- **Getting retailer prices into Top 3:** a retailer row is matched only by (1) a store SKU already confirmed for that store, (2) the `moc_com_code` column in the CSV, or (3) an exact MOC name/alias with the same unit. Store product names rarely equal MOC names, so fill `moc_com_code`, or confirm unmatched rows once in menu 10.
 - Retailer comparisons require a matched canonical material, identical normalized unit, a fresh snapshot, a VAT-inclusive price and matching project province (or an explicitly unlocated online snapshot when the project has no province).
 - A store can be ranked by total basket only if it has comparable prices for every active matched BOQ line. Partial coverage is shown but is not called the cheapest total basket.
 - Retailer basket totals are product-price subtotals and exclude shipping, which can be order/branch-specific. Estimated savings are calculated only against BOQ lines with reference prices and a complete comparable retailer basket. This is an estimate, not realized savings; verify stock, specifications and delivery with the seller.
@@ -65,6 +72,7 @@ Retailer links:
 - `logs/audit.jsonl`: imports, rejects, project/BOQ changes and application events.
 - `logs/match_audit.jsonl`: each candidate match, evidence, score and user/system decision.
 - Both files append one JSON event per line. Do not clear them during the demo.
+- Events raised inside a database transaction are written after it ends; if it was rolled back, the line carries `"transaction": "rolled_back"`, so the log never claims a change that is not in the database.
 - Excel insight exports go to `exports/`.
 - Raw downloaded official responses go to `data_raw/`; those folders are git-ignored.
 
