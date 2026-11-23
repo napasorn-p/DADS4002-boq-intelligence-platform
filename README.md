@@ -4,9 +4,12 @@ Python + MySQL workflow for importing a BOQ, comparing its material lines with o
 
 ## Data scope
 
-- **Official source:** Dataset 2, MOC Open Data CSI Product Indexes. It provides monthly province-level average construction material prices, product codes, names and units. API documentation: <https://data.moc.go.th/OpenData/CSIProductIndexes>.
+- **Official source (Dataset 2):** TPSO/MOC monthly construction-material prices, imported from a saved JSON file in the TPSO monthly price layout (`commodityCode`, `commodityNameTH`, `unitName`, `curYear` (พ.ศ.), `curMonth`, `priceCur`, `type`, `typeName`). The file used for development is `10.json`: area `10` = ส่วนกลาง, October 2569 (2026), 5,461 commodities. Prices are cash prices **excluding VAT and delivery**; the system adds 7% VAT (`VAT_RATE`) before comparing them with BOQ prices.
+  - Put the file in `data_raw/` (git-ignored, per the team rule) and import it with menu 2 → option 1. Every team member needs their own copy of the file.
+  - The online endpoint `dataapi.moc.go.th/csi-indexes` was tested on 2026-11-23: it returns a national price **index** (`index_id`, `price_index`, base year 2015) and ignores `province_code`/`com_code`, so it cannot supply unit prices. Menu 2 → option 2 is kept only for reference.
+  - With one month of data, month-to-month trend actions (`MONITOR_PRICE`) appear only after a second month's file is imported.
 - **Retail price snapshots:** Thai Watsadu, HomePro, DoHome, Global House and Hiachet. The MVP imports a standardized CSV snapshot or user quote. It does not scrape websites. Store pages, branch, observation date, product specification, unit, VAT and shipping must be recorded before prices are compared.
-- Dataset 1/8 are references/API documentation for TPSO and are not loaded as a duplicate of Dataset 2. National construction material index (Dataset 3) and standard construction prices (Dataset 4) are not mixed into the unit-price table. BOQCraft is a workflow reference, not a dataset.
+- The monthly price file follows the TPSO layout of Dataset 1/8 (index.tpso.go.th); it is loaded once, as the official Dataset 2 source, and never a second time from another feed. National construction material index (Dataset 3) and standard construction prices (Dataset 4) are not mixed into the unit-price table. BOQCraft is a workflow reference, not a dataset.
 
 Retailer links:
 
@@ -48,7 +51,7 @@ Retailer links:
 ## Main menu
 
 1. Create a project using `house`, `room`, or `item` scope.
-2. Import Dataset 2 using province code and Gregorian year range. The raw API response is saved under `data_raw/`.
+2. Import Dataset 2 from the TPSO monthly JSON file (option 1, recommended). A copy is kept in `data_raw/`; re-importing is safe (unchanged rows are skipped, corrected prices update the same row).
 3. Import retailer prices or quotations using `templates/retail_prices_template.csv`. Re-importing the same file is safe: unchanged rows are skipped and corrected prices update the existing row.
 4. Import a BOQ file, `.xlsx` or `.csv` (required fields: item/material name, quantity, unit; optional specification, unit price, room and MOC material code). `templates/boq_template.csv` can be filled in and imported directly.
 5. Enter BOQ lines manually; type `DONE` to finish.
@@ -60,7 +63,7 @@ Retailer links:
 
 ## Comparison rules
 
-- **BOQ vs official price (Dataset 2):** each matched BOQ line is compared with the latest official monthly price for the same material, unit and project province. BOQ prices more than 10% above it raise `NEGOTIATE_PRICE`; more than 10% below raise `CHECK_UNDERBUDGET`.
+- **BOQ vs official price (Dataset 2):** each matched BOQ line is compared with the latest official monthly price (plus VAT) for the same material, unit and project area. Use project area code `10` for the ส่วนกลาง file. Units are never converted: steel is priced per ตัน in Dataset 2, so a BOQ line in เส้น will not be compared until its unit matches. The fastest way to match is to put the 16-digit TPSO code in the BOQ `material_code` column. BOQ prices more than 10% above it raise `NEGOTIATE_PRICE`; more than 10% below raise `CHECK_UNDERBUDGET`.
 - **Getting retailer prices into Top 3:** a retailer row is matched only by (1) a store SKU already confirmed for that store, (2) the `moc_com_code` column in the CSV, or (3) an exact MOC name/alias with the same unit. Store product names rarely equal MOC names, so fill `moc_com_code`, or confirm unmatched rows once in menu 10.
 - Retailer comparisons require a matched canonical material, identical normalized unit, a fresh snapshot, a VAT-inclusive price and matching project province (or an explicitly unlocated online snapshot when the project has no province).
 - A store can be ranked by total basket only if it has comparable prices for every active matched BOQ line. Partial coverage is shown but is not called the cheapest total basket.

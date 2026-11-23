@@ -1,6 +1,7 @@
 """Explainable material matching; fuzzy suggestions are never auto-approved."""
 from difflib import SequenceMatcher
 import json
+import re
 
 from .audit import append_match_event
 from .cleansing import normalize_text, normalize_unit
@@ -68,13 +69,31 @@ def find_candidates(cursor, input_name, input_specification=None, input_unit=Non
         if exact_alias:
             candidates.append(_format(row, "exact_alias_unit", 0.98, spec_verified))
             continue
-        name_score = SequenceMatcher(None, normalized_name, normalized_canonical).ratio()
+        name_score = max(SequenceMatcher(None, normalized_name, normalized_canonical).ratio(),
+                         _containment(normalized_name, normalized_canonical))
         alias_score = max((SequenceMatcher(None, normalized_name, alias).ratio()
                            for alias in aliases.get(material_id, set())), default=0)
         score = max(name_score, alias_score)
         if score >= 0.55:
             candidates.append(_format(row, "fuzzy_name_suggestion", min(score, 0.89), False))
     return sorted(candidates, key=lambda candidate: candidate["confidence_score"], reverse=True)[:5]
+
+
+def _grams(text):
+    compact = re.sub(r"[\s.\-_/,()]+", "", text)
+    return {compact[i:i + 3] for i in range(len(compact) - 2)} or ({compact} if compact else set())
+
+
+def _containment(query_text, candidate_text):
+    """Share of the typed text (3-character pieces, ignoring spaces and dots) found in
+    a usually much longer official name, so "SD40" finds "SD.40" and a short Thai
+    name finds the long TPSO description. Scaled to at most 0.85: it can only
+    produce a suggestion for the user to confirm, never an automatic match.
+    """
+    query = _grams(query_text)
+    if not query:
+        return 0.0
+    return 0.85 * len(query & _grams(candidate_text)) / len(query)
 
 
 def _format(row, method, score, exact):

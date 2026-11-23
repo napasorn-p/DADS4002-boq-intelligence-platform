@@ -2,7 +2,7 @@
 
 ## Final MVP sources
 
-1. **MOC Open Data CSI Product Indexes (Dataset 2):** primary official monthly price data. API fields include province, product code/name, unit, year/month and average price.
+1. **Dataset 2 (official TPSO/MOC monthly material prices):** primary official monthly price data, imported from the TPSO monthly price JSON file. The `csi-indexes` API was tested and returns only a national price index, so it is not used for unit prices.
 2. **Retail snapshots:** Thai Watsadu, HomePro, DoHome, Global House and Hiachet. Import through the CSV template or capture a user quote. No unattended scraping is performed.
 
 Dataset 1 and Dataset 8 document TPSO material prices/API. They should be cross-checked against Dataset 2 before combining; overlapping records must not be counted twice. Dataset 3 is a national index; Dataset 4 is a standard construction cost publication; Dataset 7 is a BOQ product, not a price dataset. These are outside the MVP price fact table.
@@ -18,6 +18,6 @@ Dataset 1 and Dataset 8 document TPSO material prices/API. They should be cross-
 7. **Flag quality issues:** record missing data and extreme prices for review; do not delete outliers automatically.
 8. **Retain lineage and decisions:** store quality status, source URL, raw payload and append import/match events to JSONL audit files.
 
-Dataset 2 API field names are mapped through `MOC_FIELD_ALIASES` in `boq_platform/ingest.py`. They have not yet been verified against a live API response: if every row of an import is rejected, the error lists the field names actually received so the mapping can be corrected. A saved response can be re-imported with `import_moc_file()` without calling the API again.
+Dataset 2 is imported from a TPSO monthly price JSON file (`commodityCode`, `commodityNameTH`, `unitName`, `curYear` in พ.ศ., `curMonth`, `priceCur`, `type`/`typeName` as the area). Field names are mapped in `MOC_FIELD_ALIASES` in `boq_platform/ingest.py`; the Buddhist year is converted to ค.ศ. in step 5, `vat_included` is set to false because official prices exclude VAT, and the file is copied to `data_raw/` in step 1. If every row of an import is rejected, the error lists the field names actually received.
 
 Retail records without a capture date, valid unit or positive price are rejected. A retail observation is eligible for a project comparison only when its material mapping, unit, project region and freshness meet the comparison query's conditions.

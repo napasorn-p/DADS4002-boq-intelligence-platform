@@ -1,11 +1,16 @@
 """SQL-first BOQ cost analytics and explainable next-action rules."""
 from decimal import Decimal
 
-from .config import RETAIL_MAX_AGE_DAYS
+from .config import RETAIL_MAX_AGE_DAYS, VAT_RATE
 
 # BOQ unit price this far (in %) from the official TPSO/MOC price triggers an action.
 OFFICIAL_GAP_PCT = 10
 from .db import query
+
+
+def _short(text, width=42):
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= width else text[:width - 1] + "…"
 
 
 def project_summary(project_id):
@@ -118,12 +123,14 @@ def official_reference_costs(project_id):
     """Dataset 2: latest official province price per matched BOQ line vs the BOQ unit price.
 
     Only lines whose matched material has an official price in the project's
-    province with the same unit are compared.
+    province with the same unit are compared. Official prices that exclude VAT are
+    grossed up by VAT_RATE so they compare like-for-like with BOQ prices incl. VAT.
     """
     return query("""WITH latest AS (
             SELECT bi.item_id, COALESCE(pr.room_name,'(ไม่ระบุพื้นที่)') AS room_name,
                    m.canonical_name AS material_name, bi.quantity, bi.input_unit,
-                   bi.budget_unit_price, po.price AS official_unit_price,
+                   bi.budget_unit_price, po.price AS official_price_ex_vat,
+                   CASE WHEN po.vat_included=0 THEN po.price*(1+%s) ELSE po.price END AS official_unit_price,
                    po.period_year, po.period_month,
                    ROW_NUMBER() OVER (PARTITION BY bi.item_id
                        ORDER BY po.observation_date DESC, po.retrieved_at DESC) AS rn
@@ -137,14 +144,14 @@ def official_reference_costs(project_id):
             WHERE bi.project_id=%s AND bi.is_deleted=0
         )
         SELECT item_id, room_name, material_name, quantity, input_unit, budget_unit_price,
-               official_unit_price, period_year, period_month,
+               official_price_ex_vat, official_unit_price, period_year, period_month,
                quantity*official_unit_price AS official_line_cost,
                quantity*budget_unit_price AS boq_line_cost,
                quantity*(budget_unit_price-official_unit_price) AS diff_vs_official,
                CASE WHEN budget_unit_price IS NULL OR official_unit_price=0 THEN NULL
                     ELSE (budget_unit_price-official_unit_price)/official_unit_price*100 END AS diff_pct
         FROM latest WHERE rn=1
-        ORDER BY diff_vs_official IS NULL, diff_vs_official DESC, item_id""", (project_id,))
+        ORDER BY diff_vs_official IS NULL, diff_vs_official DESC, item_id""", (VAT_RATE, project_id))
 
 
 def official_price_trends(project_id):
@@ -234,7 +241,7 @@ def generate_insights(project_id):
                         "evidence": f"ร้านที่ครอบคลุมมากที่สุดมีราคาเทียบได้ {coverage:.0%} ของรายการ BOQ",
                         "next_action": "เติม snapshot/ใบเสนอราคาสำหรับรายการที่ขาดให้ครบ ก่อนจัดอันดับยอดรวมร้านหรือคำนวณโอกาสประหยัด"})
     if top_cost:
-        names = ", ".join(str(row["material_name"]) for row in top_cost[:3])
+        names = ", ".join(_short(row["material_name"]) for row in top_cost[:3])
         actions.append({"keyword": "REVIEW_TOP_COST", "priority": "กลาง",
                         "evidence": f"รายการต้นทุนสูงสุด: {names}",
                         "next_action": "ทบทวนปริมาณและสเปกของ 3 รายการนี้ก่อนขอราคาหรืออนุมัติงบ"})
@@ -247,7 +254,7 @@ def generate_insights(project_id):
             # rn=1 is most recent, rn=2 is previous period.
             newest, previous = values[0], values[1]
             if newest["price"] > previous["price"]:
-                rising.append(newest["canonical_name"])
+                rising.append(_short(newest["canonical_name"]))
     if rising:
         actions.append({"keyword": "MONITOR_PRICE", "priority": "กลาง",
                         "evidence": "ราคาทางการล่าสุดสูงกว่ารอบก่อนของ " + ", ".join(rising[:3]),
@@ -257,14 +264,14 @@ def generate_insights(project_id):
     below = [row for row in official_compared
              if row["diff_pct"] is not None and row["diff_pct"] < -OFFICIAL_GAP_PCT]
     if above:
-        names = ", ".join(f"{row['material_name']} (+{row['diff_pct']:.0f}%)" for row in above[:3])
+        names = ", ".join(f"{_short(row['material_name'])} (+{row['diff_pct']:.0f}%)" for row in above[:3])
         gap = sum(row["diff_vs_official"] for row in above)
         actions.append({"keyword": "NEGOTIATE_PRICE", "priority": "สูง",
                         "evidence": f"ราคา BOQ สูงกว่าราคากลาง สนค. เกิน {OFFICIAL_GAP_PCT}%: {names} "
                                     f"(ส่วนต่างรวม ฿{gap:,.2f})",
                         "next_action": "ใช้ราคากลาง สนค. เดือนล่าสุดเป็นหลักฐานต่อรองกับผู้รับเหมา/ร้าน หรือขอใบเสนอราคาเพิ่ม"})
     if below:
-        names = ", ".join(f"{row['material_name']} ({row['diff_pct']:.0f}%)" for row in below[:3])
+        names = ", ".join(f"{_short(row['material_name'])} ({row['diff_pct']:.0f}%)" for row in below[:3])
         actions.append({"keyword": "CHECK_UNDERBUDGET", "priority": "กลาง",
                         "evidence": f"ราคา BOQ ต่ำกว่าราคากลาง สนค. เกิน {OFFICIAL_GAP_PCT}%: {names}",
                         "next_action": "ตรวจว่าราคา BOQ เก่าหรือสเปกต่ำกว่าที่ต้องการหรือไม่ แล้วเผื่องบส่วนนี้"})

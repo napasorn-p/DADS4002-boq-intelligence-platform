@@ -131,18 +131,23 @@ def _flag_historical_outlier(cursor, record, material_id):
     return False
 
 
-# The MOC API field names have not been verified against a live response yet.
-# Each canonical field accepts several spellings; check data_raw/moc_*.json after
-# the first run and add the real key here if the import reports unknown fields.
+# Dataset 2 field names. Two layouts are supported:
+# - TPSO monthly price file (the layout of index-api.tpso.go.th CmiPrice/Month, saved as
+#   JSON and imported with import_moc_file): commodityCode, commodityNameTH, unitName,
+#   curYear (Buddhist year), curMonth, priceCur, type (area code, "10" = ส่วนกลาง), typeName.
+# - The field names in the MOC Open Data documentation (com_code, com_name_th, unit, ...).
+# Note: tested on 2026-11-23, dataapi.moc.go.th/csi-indexes actually returns a national
+# price INDEX (index_id, price_index, base_year) and ignores province_code/com_code, so it
+# cannot provide unit prices; use the monthly price file instead.
 MOC_FIELD_ALIASES = {
-    "com_code": ("com_code", "comcode", "commodity_code", "product_code", "code"),
-    "com_name_th": ("com_name_th", "com_name", "comnameth", "commodity_name", "product_name", "name_th", "name"),
-    "unit": ("unit", "unit_name", "unitname", "unit_th", "com_unit"),
-    "province_code": ("province_code", "provincecode", "prov_code", "province_id"),
-    "province_name": ("province_name", "province_name_th", "provincename", "province"),
-    "year": ("year", "price_year", "cur_year", "curyear", "yr"),
-    "month": ("month", "price_month", "cur_month", "curmonth", "mn"),
-    "price": ("price", "avg_price", "price_avg", "price_value", "pricecur", "value"),
+    "com_code": ("commoditycode", "com_code", "comcode", "commodity_code", "product_code"),
+    "com_name_th": ("commoditynameth", "com_name_th", "com_name", "commodity_name", "product_name"),
+    "unit": ("unitname", "unit", "unit_name", "unit_th", "com_unit"),
+    "province_code": ("province_code", "provincecode", "prov_code", "type"),
+    "province_name": ("province_name", "province_name_th", "provincename", "typename"),
+    "year": ("curyear", "year", "price_year", "cur_year"),
+    "month": ("curmonth", "month", "price_month", "cur_month"),
+    "price": ("pricecur", "price", "avg_price", "price_avg"),
 }
 
 
@@ -188,14 +193,26 @@ def import_moc_prices(province_code, from_year, to_year, com_code="0000000000000
                            from_year=from_year, to_year=to_year)
 
 
-def import_moc_file(json_path, province_code):
-    """Re-import a saved Dataset 2 response (data_raw/moc_*.json) without calling the API."""
+def import_moc_file(json_path, province_code=None):
+    """Import Dataset 2 from a saved JSON file (TPSO monthly price file or a saved API response).
+
+    The file is copied to data_raw/ first so the import can always be traced back to it.
+    province_code is only needed when the rows do not carry their own area code.
+    """
     json_path = Path(json_path)
-    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    payload = json.loads(json_path.read_text(encoding="utf-8-sig"))
     rows = _moc_rows(payload)
     if rows is None:
         raise ValueError("ไฟล์ไม่มีรายการข้อมูลในรูปแบบที่รองรับ")
-    return import_moc_rows(rows, province_code, run_id=uuid.uuid4().hex[:12], raw_name=json_path.name)
+    run_id = uuid.uuid4().hex[:12]
+    raw_dir = Path(__file__).resolve().parents[1] / "data_raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    if json_path.resolve().parent != raw_dir.resolve():
+        raw_copy = raw_dir / f"moc_file_{run_id}_{json_path.name}"
+        shutil.copy2(json_path, raw_copy)
+    else:
+        raw_copy = json_path
+    return import_moc_rows(rows, province_code, run_id=run_id, raw_name=raw_copy.name)
 
 
 def import_moc_rows(rows, province_code, *, run_id, raw_name, from_year=None, to_year=None):
@@ -209,6 +226,8 @@ def import_moc_rows(rows, province_code, *, run_id, raw_name, from_year=None, to
             for raw in rows:
                 normalized = {field: _pick(raw, names) for field, names in MOC_FIELD_ALIASES.items()}
                 normalized["province_code"] = normalized["province_code"] or province_code
+                # Official TPSO/MOC prices are cash prices excluding VAT and delivery.
+                normalized["vat_included"] = "false"
                 record, issues = clean_price_record(normalized, source_id, official=True)
                 if issues:
                     rejected += 1
@@ -246,7 +265,7 @@ def import_moc_rows(rows, province_code, *, run_id, raw_name, from_year=None, to
                          f"(ฟิลด์ที่พบ: {keys}); เพิ่มชื่อใน MOC_FIELD_ALIASES ใน ingest.py")
     saved = counts["inserted"] + counts["revised"]
     append_event("moc_import", run_id=run_id, source="MOC Open Data CSI", raw_file=raw_name,
-                 province_code=str(province_code), from_year=from_year, to_year=to_year,
+                 province_code=str(province_code) if province_code else None, from_year=from_year, to_year=to_year,
                  rows_read=len(rows), rows_inserted=counts["inserted"], rows_revised=counts["revised"],
                  rows_unchanged=counts["unchanged"], rows_rejected=rejected)
     return {"run_id": run_id, "rows_read": len(rows), "rows_saved": saved,

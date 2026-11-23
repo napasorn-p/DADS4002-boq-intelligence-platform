@@ -5,7 +5,7 @@ from boq_platform.analytics import generate_insights
 from boq_platform.audit import append_event
 from boq_platform.dashboard import print_dashboard
 from boq_platform.db import connection, query
-from boq_platform.ingest import import_moc_prices, import_retail_csv, read_boq_excel
+from boq_platform.ingest import import_moc_file, import_moc_prices, import_retail_csv, read_boq_excel
 from boq_platform.projects import (add_boq_item, add_room, confirm_boq_match,
                                   create_project, delete_boq_item, import_boq_rows, list_boq_items,
                                   update_boq_item)
@@ -45,13 +45,23 @@ def _create_project():
 
 
 def _import_official():
-    province = input("รหัสจังหวัด (ตัวอย่าง 10 = กรุงเทพฯ): ").strip()
-    if not province:
-        print("ต้องระบุรหัสจังหวัด")
-        return
-    from_year = _input_int("ปีเริ่มต้น ค.ศ.")
-    to_year = _input_int("ปีสิ้นสุด ค.ศ.")
-    result = import_moc_prices(province, from_year, to_year)
+    print("แหล่ง Dataset 2: 1 ไฟล์ JSON ราคารายเดือนของ สนค. (แนะนำ) | 2 เรียก API ออนไลน์")
+    mode = input("เลือก [1]: ").strip() or "1"
+    if mode == "1":
+        path = input("พาธไฟล์ JSON (เช่น data_raw/10.json): ").strip().strip('"')
+        if not Path(path).is_file():
+            print("ไม่พบไฟล์")
+            return
+        result = import_moc_file(path)
+    else:
+        print("หมายเหตุ: ทดสอบแล้ว csi-indexes ส่งเฉพาะดัชนีราคา ไม่มีราคาต่อหน่วย จึงอาจถูกปฏิเสธทุกแถว")
+        province = input("รหัสจังหวัด (ตัวอย่าง 10 = กรุงเทพฯ): ").strip()
+        if not province:
+            print("ต้องระบุรหัสจังหวัด")
+            return
+        from_year = _input_int("ปีเริ่มต้น ค.ศ.")
+        to_year = _input_int("ปีสิ้นสุด ค.ศ.")
+        result = import_moc_prices(province, from_year, to_year)
     print(f"นำเข้าใหม่ {result['rows_inserted']} แถว, ราคาถูกแก้ {result['rows_revised']} แถว, "
           f"ซ้ำเดิม {result['rows_unchanged']} แถว, ปฏิเสธ {result['rows_rejected']} แถว; "
           f"raw: {result['raw_file'].name}")
@@ -108,8 +118,8 @@ def _manual_entry():
         print(f"บันทึกรายการ {result['item_id']} สถานะ {result['match_status']}")
         if result["candidates"] and not result["candidates"][0]["exact"]:
             for i, candidate in enumerate(result["candidates"], start=1):
-                print(f" {i}. {candidate['canonical_name']} / {candidate['standard_unit']} "
-                      f"({candidate['confidence_score']:.0%})")
+                print(f" {i}. [{candidate['material_code'] or '-'}] {candidate['canonical_name']} / "
+                      f"{candidate['standard_unit']} ({candidate['confidence_score']:.0%})")
             choice = input("เลือกวัสดุที่ตรง (เลข 1-5) หรือเว้นว่างไว้ตรวจภายหลัง: ").strip()
             if choice.isdigit() and 1 <= int(choice) <= len(result["candidates"]):
                 confirm_boq_match(result["item_id"], result["candidates"][int(choice)-1]["material_id"])
@@ -231,7 +241,7 @@ def main():
     append_event("application_started", entry_point="main.py")
     actions = {
         "1": ("สร้างโครงการ", _create_project),
-        "2": ("ดึงราคาทางการ Dataset 2 จาก MOC API", _import_official),
+        "2": ("นำเข้าราคาทางการ Dataset 2 (ไฟล์ JSON สนค. / API)", _import_official),
         "3": ("นำเข้าราคาจากร้านค้า CSV snapshot", _import_retail),
         "4": ("นำเข้า BOQ จากไฟล์ (.xlsx / .csv)", _import_excel),
         "5": ("เพิ่ม BOQ แบบกรอกเอง (จบด้วย DONE)", _manual_entry),

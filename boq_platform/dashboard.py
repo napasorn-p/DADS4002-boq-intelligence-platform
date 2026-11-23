@@ -8,6 +8,11 @@ def money(value):
     return f"฿{Decimal(str(value)):,.2f}"
 
 
+def short(text, width=42):
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= width else text[:width - 1] + "…"
+
+
 def _table(rows, columns):
     if not rows:
         return "(ไม่มีข้อมูลที่เข้าเงื่อนไข)"
@@ -35,7 +40,7 @@ def print_dashboard(insight):
     else:
         print("ตะกร้าร้าน: ยังไม่มีร้านที่มีราคาครบทุกวัสดุที่จับคู่แล้ว จึงยังไม่สรุปยอดประหยัดรวม")
 
-    print("\nเทียบราคา BOQ กับราคากลาง สนค. (Dataset 2, จังหวัดเดียวกัน, เดือนล่าสุด)")
+    print("\nเทียบราคา BOQ กับราคากลาง สนค. (Dataset 2, พื้นที่เดียวกัน, เดือนล่าสุด, บวก VAT แล้ว)")
     official = insight.get("official_summary")
     if official:
         pct = official["diff_pct"]
@@ -44,14 +49,14 @@ def print_dashboard(insight):
               f"BOQ {money(official['boq_cost'])} vs ราคากลาง {money(official['official_cost'])}")
         print(f"BOQ {direction}ราคากลาง {money(abs(official['diff']))}"
               f"{f' ({abs(pct):.1f}%)' if pct is not None else ''}")
-        rows = [{"item_id": row["item_id"], "material": row["material_name"],
+        rows = [{"item_id": row["item_id"], "material": short(row["material_name"]),
                  "boq": money(row["budget_unit_price"]), "official": money(row["official_unit_price"]),
                  "period": f"{row['period_year']}-{row['period_month']:02d}",
                  "diff": money(row["diff_vs_official"]),
                  "pct": f"{row['diff_pct']:+.1f}%" if row["diff_pct"] is not None else "N/A"}
                 for row in insight["official_reference"] if row["budget_unit_price"] is not None][:5]
         print(_table(rows, [("item_id", "ID"), ("material", "วัสดุ"), ("boq", "BOQ/หน่วย"),
-                            ("official", "ราคากลาง/หน่วย"), ("period", "เดือน"),
+                            ("official", "ราคากลาง+VAT/หน่วย"), ("period", "เดือน"),
                             ("diff", "ส่วนต่างรวม"), ("pct", "%")]))
     else:
         print("(ยังไม่มีรายการที่มีทั้งราคา BOQ และราคากลางในจังหวัด/หน่วยเดียวกัน)")
@@ -59,7 +64,7 @@ def print_dashboard(insight):
     print("\nวัสดุ Top 3 ตามต้นทุน BOQ")
     top = []
     for row in insight["top_cost_items"]:
-        top.append({"item_id": row["item_id"], "material_name": row["material_name"],
+        top.append({"item_id": row["item_id"], "material_name": short(row["material_name"]),
                     "qty": f"{row['quantity']} {row['input_unit']}",
                     "line_cost": money(row["boq_line_cost"]), "match": row["match_status"]})
     print(_table(top, [("item_id", "ID"), ("material_name", "วัสดุ"),
@@ -73,7 +78,7 @@ def print_dashboard(insight):
         if count >= 3:
             continue
         offer_counts[row["item_id"]] = count + 1
-        offers.append({"item_id": row["item_id"], "material": row["material_name"],
+        offers.append({"item_id": row["item_id"], "material": short(row["material_name"]),
                        "store": row["source_name"], "price": money(row["price"]),
                        "unit": row["input_unit"], "date": row["observation_date"],
                        "branch": row["branch_name"] or row["province_name"] or "ไม่ระบุ"})

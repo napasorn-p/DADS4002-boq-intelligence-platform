@@ -24,6 +24,9 @@ LOG_DIR = ROOT / os.getenv("LOG_DIR", "logs")
 RAW_DIR = ROOT / "data_raw"
 EXPORT_DIR = ROOT / "exports"
 RETAIL_MAX_AGE_DAYS = int(os.getenv("RETAIL_MAX_AGE_DAYS", "90"))
+# Thai VAT rate. Official TPSO prices exclude VAT; they are grossed up by this rate
+# before being compared with BOQ unit prices (which are assumed to include VAT).
+VAT_RATE = float(os.getenv("VAT_RATE", "0.07"))
 
 RETAIL_SOURCES = {
     "thai watsadu": "Thai Watsadu",
