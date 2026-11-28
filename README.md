@@ -1,6 +1,6 @@
 # BOQ Intelligence Platform
 
-DADS 4002 Programming Project 1/2569 (Python + MySQL, กลุ่ม 3 คน). ระบบวิเคราะห์ราคาวัสดุก่อสร้างและประมาณราคา BOQ จากข้อมูลราคาจริงของ สนค. (index-api.tpso.go.th) และราคาร้านค้า ใช้งานผ่านเมนูบน command line: `python main.py` (ไม่มี GUI)
+DADS 4002 Programming Project 1/2569 (Python + MySQL, กลุ่ม 3 คน). ระบบวิเคราะห์ราคาวัสดุก่อสร้างและประมาณราคา BOQ จากข้อมูลราคาจริงของ สนค. (index-api.tpso.go.th) และราคาร้านค้า ใช้งานได้ 2 แบบ: หน้าต่างโปรแกรม (GUI) สำหรับกรอกราคา BOQ `python app_gui.py` และเมนูบน command line `python main.py`
 
 ## เริ่มต้นสำหรับสมาชิกทีม
 
@@ -74,6 +74,24 @@ git push -u origin feature/<ชื่อ>
 
 เสร็จแต่ละส่วน: เปิด pull request จาก `feature/<ชื่อ>` เข้า `main` บน GitHub ให้เพื่อน approve 1 คน แล้ว merge
 
+## หน้าต่างกรอกราคา BOQ (GUI)
+
+```bash
+python app_gui.py
+```
+
+เปิดบน**เครื่องตัวเอง** (Windows / macOS) ที่ตั้งค่าตาม "ทางที่ 2" แล้ว ใน Codespaces เปิดหน้าต่างไม่ได้เพราะไม่มีหน้าจอ (ใช้ `main.py` และ test ได้ตามปกติ) Tkinter มากับ Python ไม่ต้องติดตั้งเพิ่ม
+
+ถ้าเคย import dump ก่อนวันที่ 28 พ.ย. 2569 ให้ import `db/boq_intelligence_dump.sql` ใหม่หนึ่งครั้ง (เพิ่มตาราง `user_input_line`)
+
+ผู้ใช้เพิ่ม/ดู/แก้/ลบได้เฉพาะข้อมูลของผู้ใช้ (`user_input_batch`, `user_input_line`) ส่วนตารางราคาใช้ค้นหาและเทียบราคาเท่านั้น ไม่ถูกแก้
+
+- **ชุดข้อมูล BOQ (ตารางบน):** สร้างชุดใหม่, นำเข้า CSV, แก้ชื่อโครงการ, ยืนยัน/ยกเลิกยืนยัน (ชุดที่ยืนยันแล้วแก้รายการไม่ได้), ลบชุด (ลบรายการในชุดด้วย)
+- **รายการ (ตารางล่าง + ฟอร์ม):** กรอกชื่อรายการ, หน่วย, จำนวน, ราคาต่อหน่วย แล้วกด "เพิ่มรายการ" คลิกรายการในตารางเพื่อแก้หรือลบ "ค้นหาราคา..." ผูกรายการกับราคา สนค./ร้านค้า แล้วตารางจะแสดงราคาอ้างอิงและยอดรวมเทียบกัน (เทียบเฉพาะรายการที่หน่วยตรงกัน)
+- **CSV:** กด "บันทึกแม่แบบ CSV..." หรือใช้ `templates/boq_input_template.csv` คอลัมน์ที่ต้องมี `item_name`, `unit`, `quantity` ไม่บังคับ `unit_price`, `commodity_code` (รหัส สนค. 16 หลัก ผูกราคาให้อัตโนมัติ), `note` รับไฟล์ UTF-8 (Excel: CSV UTF-8) และ Windows Thai แถวที่ผิดจะไม่ถูกบันทึก และโปรแกรมบอกเลขแถวกับสาเหตุ ชุดนั้นจะมีสถานะ "มีแถวผิด"
+
+โค้ดแยกเป็น 2 ชั้น: `boq_store.py` (ตรวจข้อมูล + SQL ทั้งหมด, มี test) และ `app_gui.py` (หน้าต่างเท่านั้น) เมนู CLI ใช้ `boq_store` ตัวเดียวกันได้
+
 ## กติกาการทำงานร่วมกัน
 
 - ทุกคนทำงานบน branch `feature/<ชื่อ>` ที่แตกจาก `main`; `main` รับเฉพาะ pull request ที่มีคน approve
@@ -90,12 +108,14 @@ git push -u origin feature/<ชื่อ>
 | คน | ชื่อ | ไฟล์ | Insight |
 |---|---|---|---|
 | 1 |  | `schema.sql`, `db.py`, `import_data.py`, `db/` (ฐานข้อมูลและการนำเข้า) |  |
-| 2 |  | `menus/search.py`, `menus/basket.py` (ค้นหา, ประมาณราคา BOQ) |  |
+| 2 |  | `app_gui.py`, `boq_store.py`, `menus/search.py`, `menus/basket.py` (หน้าต่างกรอก BOQ, ค้นหา, ประมาณราคา) |  |
 | 3 |  | `analytics/`, `menus/exporter.py` (รายงานวิเคราะห์, ส่งออก) |  |
 
 ## โครงสร้างโปรเจค
 
 ```
+app_gui.py            หน้าต่างกรอกราคา BOQ (Tkinter): python app_gui.py
+boq_store.py          เพิ่ม/อ่าน/แก้/ลบ ชุดและรายการ BOQ, อ่าน CSV (ใช้ร่วมกันทั้ง GUI และ CLI)
 main.py               เมนูหลัก: เรียกฟีเจอร์ของแต่ละคนผ่านรายการ MENU (เมนู 5 = ตรวจฐานข้อมูล)
 db.py                 get_connection(), query(), execute() ต่อ MySQL ตาม .env
 logger.py             get_logger() เขียน log ไปที่ logs/app.log
@@ -106,7 +126,7 @@ menus/search.py       เมนู 1 ค้นหาวัสดุและร�
 menus/basket.py       เมนู 2 ประมาณราคา BOQ      (ยังไม่ได้ทำ)
 menus/exporter.py     เมนู 4 ส่งออกข้อมูล         (ยังไม่ได้ทำ)
 analytics/            เมนู 3 รายงานวิเคราะห์ (ลงทะเบียนใน REPORTS)
-templates/            ตัวอย่างไฟล์ BOQ / ราคาร้านค้า (CSV)
+templates/            boq_input_template.csv = แม่แบบ CSV สำหรับ GUI (ไฟล์อื่นเป็นของร่างแรก)
 docs/                 ER diagram (png, Workbench model) และคำอธิบาย
 legacy/               โค้ดร่างแรกสำหรับ schema เก่า: ใช้อ้างอิง/คัดลอก ไม่ได้ถูกเรียก
 scripts/setup_db.sh   เปิด MySQL + import dump + สร้าง .env (Codespaces / Linux)
@@ -134,7 +154,8 @@ Tables (diagram: `docs/er_diagram.png`, model: `docs/boq_model.mwb`, notes: `doc
 - `master_product`: every price, TPSO or retail (`source`), one row per product per period
 - `tpso_price`: TPSO fields, same `id` as its `master_product` row
 - `material_prices_long`: retail store fields, same `id` as its `master_product` row
-- `user_input_batch`: one row per BOQ input session (manual or CSV)
+- `user_input_batch`: one row per BOQ input session (manual or CSV); status draft / validated / has_error / confirmed
+- `user_input_line`: one row per BOQ line in a batch (`line_no`, `item_name`, `unit`, `quantity`, `unit_price`, `note`, optional `product_id` → `master_product`); deleted with its batch
 
 Each team member runs MySQL 8 on their own computer. Git carries the structure (`schema.sql`) and the team's shared data (`db/boq_intelligence_dump.sql`).
 
@@ -154,6 +175,7 @@ What the dump contains (made 2026-11-28 from the database owner's Workbench):
 | `tpso_price` | 5,461 | TPSO ส่วนกลาง, ต.ค. 2569 (one month), cash price excl. VAT and delivery |
 | `material_prices_long` | 74 | HomePro 37, เฮียเชษฐ 37, read from the stores' web pages in Nov 2569; 34 of them have no price (`not_sold`, `not_found`, `quote_only`) |
 | `user_input_batch` | 0 | filled by the program |
+| `user_input_line` | 0 | filled by the program (GUI) |
 
 111 retail rows marked `estimate` (ไทวัสดุ, โกลบอลเฮ้าส์, ดูโฮม: unverified estimates from an old Excel file) and one test row in `user_input_batch` were left out, because the project uses real observed data only.
 
