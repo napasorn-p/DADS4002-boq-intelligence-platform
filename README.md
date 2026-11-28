@@ -32,10 +32,9 @@ Retailer links:
    ```
 
 3. Copy `.env.example` to `.env` and enter the MySQL connection settings.
-4. Run `schema.sql` in MySQL. It creates the database, tables, and the official/retailer source registry.
-   If you already ran an older version of `schema.sql`, drop and recreate the database
-   (`DROP DATABASE boq_intelligence;` then run `schema.sql` again) — `CREATE TABLE IF NOT EXISTS`
-   does not change existing tables.
+4. Set `DB_NAME=boq_intelligence` in `.env`, then build the database one of two ways (see [Database](#database)):
+   - from a teammate's dump file (structure + data), or
+   - from `schema.sql` (structure only, empty tables).
 5. Start the integrated Python interface:
 
    ```bash
@@ -47,6 +46,37 @@ Retailer links:
    ```bash
    jupyter lab notebooks/BOQ_Intelligence_MVP.ipynb
    ```
+
+## Database
+
+> **Schema changed (2026-11-28).** `schema.sql` now holds the Workbench design: `master_product`, `tpso_price`, `material_prices_long`, `user_input_batch` (diagram: `docs/er_diagram.png`, model: `docs/boq_model.mwb`, notes: `docs/ER_Diagram.md`). The Python code in `boq_platform/`, `main.py` and `menus/` was written for the previous 9-table schema (`price_sources`, `materials`, `price_observations`, `boq_items`, …) and **will not run against the new database until it is rewritten**. The previous schema is in git history (commit `d98bc44`).
+
+Each team member runs MySQL 8 on their own computer. Git carries the structure (`schema.sql`); data moves between team members as a dump file.
+
+**Create empty tables from `schema.sql`.** In MySQL Workbench: File → Open SQL Script → `schema.sql` → Execute (⚡). Or:
+
+```bash
+mysql -u root -p < schema.sql
+```
+
+**Export a dump (the person who has the data).** In Workbench: Server → Data Export → tick `boq_intelligence` → Export to Self-Contained File → tick Include Create Schema → Start Export. Or:
+
+```bash
+mysqldump -u root -p --databases boq_intelligence --no-tablespaces --set-gtid-purged=OFF > boq_intelligence_dump.sql
+```
+
+**Import a dump.** In Workbench: Server → Data Import → Import from Self-Contained File → Start Import. Or:
+
+```bash
+mysql -u root -p < boq_intelligence_dump.sql
+```
+
+Rules:
+
+- Change tables only by editing `schema.sql` (and the Workbench model) on your branch and opening a pull request. Do not change tables only in your own MySQL.
+- After a schema change is merged, make a new dump; everyone re-imports it.
+- Dumps must contain real data only. Share a dump over 50 MB through Google Drive instead of git (GitHub rejects files over 100 MB).
+- `.env` (your MySQL password) is never committed.
 
 ## Main menu
 
