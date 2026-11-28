@@ -1,96 +1,69 @@
-# ER Diagram - BOQ Intelligence Platform MVP
+# ER Diagram - BOQ Intelligence Platform
 
-The diagram separates canonical materials, price snapshots, sources, projects and matching evidence. A price comparison is eligible only when the canonical material, unit, specification, area and time window are compatible.
+Source of truth: `schema.sql`. Workbench model: `docs/boq_model.mwb`. Exported picture: `docs/er_diagram.png`.
+
+![ER diagram](er_diagram.png)
 
 ```mermaid
 erDiagram
-    PRICE_SOURCES ||--o{ PRICE_OBSERVATIONS : provides
-    MATERIALS o|--o{ PRICE_OBSERVATIONS : identifies
-    MATERIALS ||--o{ MATERIAL_ALIASES : has
-    PRICE_SOURCES o|--o{ MATERIAL_ALIASES : names
-    BOQ_PROJECTS ||--o{ PROJECT_ROOMS : contains
-    BOQ_PROJECTS ||--o{ BOQ_ITEMS : includes
-    PROJECT_ROOMS o|--o{ BOQ_ITEMS : groups
-    MATERIALS o|--o{ BOQ_ITEMS : matches
-    PRICE_OBSERVATIONS o|--o{ BOQ_ITEMS : selected_for
-    BOQ_PROJECTS o|--o{ MATCH_EVENTS : creates
-    BOQ_ITEMS o|--o{ MATCH_EVENTS : records
-    MATERIALS o|--o{ MATCH_EVENTS : candidate
-    PRICE_OBSERVATIONS o|--o{ MATCH_EVENTS : candidate_for
+    MASTER_PRODUCT ||--o| TPSO_PRICE : "TPSO detail (same id)"
+    MASTER_PRODUCT ||--o| MATERIAL_PRICES_LONG : "retail detail (same id)"
 
-    PRICE_SOURCES {
-        bigint source_id PK
-        varchar source_name UK
-        enum source_kind
-        tinyint dataset_no
-        varchar base_url
-    }
-    MATERIALS {
-        bigint material_id PK
-        varchar material_code UK
-        varchar canonical_name
-        varchar category_name
-        varchar specification
-        varchar standard_unit
-    }
-    MATERIAL_ALIASES {
-        bigint alias_id PK
-        bigint material_id FK
-        bigint source_id FK
-        varchar alias_text
-        varchar alias_normalized
-        varchar source_product_code
-    }
-    PRICE_OBSERVATIONS {
-        bigint observation_id PK
-        bigint source_id FK
-        bigint material_id FK
-        char source_record_hash
-        date observation_date
-        varchar province_code
+    MASTER_PRODUCT {
+        int id PK
+        enum source "TPSO or RETAIL"
+        varchar store_name
+        char commodity_code
+        int item_id
+        varchar category
+        varchar product_name
         varchar unit
-        decimal price
-        boolean vat_included
-        decimal shipping_fee
-    }
-    BOQ_PROJECTS {
-        bigint project_id PK
-        varchar project_name
-        enum scope_type
-        varchar province_code
-        decimal budget_total
-    }
-    PROJECT_ROOMS {
-        bigint room_id PK
-        bigint project_id FK
-        varchar room_name
-        varchar floor_label "NOT NULL, default empty string"
-    }
-    BOQ_ITEMS {
-        bigint item_id PK
-        bigint project_id FK
-        bigint room_id FK
-        bigint material_id FK
-        bigint chosen_observation_id FK
-        varchar input_name
         decimal quantity
-        varchar input_unit
-        decimal budget_unit_price
-        enum match_status
-        boolean is_deleted
+        decimal price
+        varchar availability
+        varchar price_basis
+        varchar note
+        char price_period
+        date retrieved_date
     }
-    MATCH_EVENTS {
-        bigint match_event_id PK
-        bigint project_id FK
-        bigint item_id FK
-        bigint observation_id FK
-        bigint candidate_material_id FK
-        varchar match_method
-        decimal confidence_score
-        varchar decision_status
-        json evidence_json
+    TPSO_PRICE {
+        int id PK, FK
+        tinyint type
+        varchar typeName
+        varchar commodityCode
+        varchar commodityNameTH
+        varchar unitName
+        tinyint curMonth
+        smallint curYear
+        decimal priceCur
+        decimal priceVAT
+        datetime createdAt
+    }
+    MATERIAL_PRICES_LONG {
+        int id PK, FK
+        int item_id
+        varchar category
+        varchar item_name
+        varchar unit
+        decimal quantity
+        varchar store_name
+        decimal price
+        varchar availability
+        varchar price_basis
+        varchar note
+        date retrieved_date
+    }
+    USER_INPUT_BATCH {
+        int batch_id PK
+        enum input_method "manual or csv"
+        varchar project_name
+        varchar file_name "required when csv"
+        varchar created_by
         datetime created_at
+        int total_rows
+        int error_rows
+        enum status
     }
 ```
 
-`match_events` is the queryable evidence table. Every event is also appended to `logs/match_audit.jsonl`; events must not be overwritten.
+`tpso_price` and `material_prices_long` use the same `id` as their `master_product` row (the foreign key is on the primary key), so each detail row belongs to exactly one master row. `user_input_batch` is not linked to the other tables yet.

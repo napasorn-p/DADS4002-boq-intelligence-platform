@@ -32,10 +32,9 @@ Retailer links:
    ```
 
 3. Copy `.env.example` to `.env` and enter the MySQL connection settings.
-4. Run `schema.sql` in MySQL. It creates the database, tables, and the official/retailer source registry.
-   If you already ran an older version of `schema.sql`, drop and recreate the database
-   (`DROP DATABASE boq_intelligence;` then run `schema.sql` again) — `CREATE TABLE IF NOT EXISTS`
-   does not change existing tables.
+4. Set `DB_NAME=boq_intelligence` in `.env`, then build the database one of two ways (see [Database](#database)):
+   - from a teammate's dump file (structure + data), or
+   - from `schema.sql` (structure only, empty tables).
 5. Start the integrated Python interface:
 
    ```bash
@@ -47,6 +46,60 @@ Retailer links:
    ```bash
    jupyter lab notebooks/BOQ_Intelligence_MVP.ipynb
    ```
+
+## Database
+
+> **Schema changed (2026-11-28).** `schema.sql` now holds the Workbench design: `master_product`, `tpso_price`, `material_prices_long`, `user_input_batch` (diagram: `docs/er_diagram.png`, model: `docs/boq_model.mwb`, notes: `docs/ER_Diagram.md`). The Python code in `boq_platform/`, `main.py` and `menus/` was written for the previous 9-table schema (`price_sources`, `materials`, `price_observations`, `boq_items`, …) and **will not run against the new database until it is rewritten**. The previous schema is in git history (commit `d98bc44`).
+
+Each team member runs MySQL 8 on their own computer. Git carries the structure (`schema.sql`) and the team's shared data (`db/boq_intelligence_dump.sql`).
+
+**Get the team database (start here).** Import `db/boq_intelligence_dump.sql`. It creates `boq_intelligence` with all tables and data. In Workbench: Server → Data Import → Import from Self-Contained File → choose `db/boq_intelligence_dump.sql` → Start Import. Or:
+
+```bash
+mysql -u root -p < db/boq_intelligence_dump.sql
+```
+
+Importing again replaces the tables with the dump's copy (your own changes in those tables are lost).
+
+What the dump contains (made 2026-11-28 from the database owner's Workbench):
+
+| Table | Rows | Content |
+|---|---|---|
+| `master_product` | 5,535 | 5,461 TPSO + 74 retail |
+| `tpso_price` | 5,461 | TPSO ส่วนกลาง, ต.ค. 2569 (one month), cash price excl. VAT and delivery |
+| `material_prices_long` | 74 | HomePro 37, เฮียเชษฐ 37, read from the stores' web pages in Nov 2569; 34 of them have no price (`not_sold`, `not_found`, `quote_only`) |
+| `user_input_batch` | 0 | filled by the program |
+
+111 retail rows marked `estimate` (ไทวัสดุ, โกลบอลเฮ้าส์, ดูโฮม: unverified estimates from an old Excel file) and one test row in `user_input_batch` were left out, because the project uses real observed data only.
+
+**Empty tables only.** In Workbench: File → Open SQL Script → `schema.sql` → Execute (⚡). Or:
+
+```bash
+mysql -u root -p < schema.sql
+```
+
+**Add another TPSO month.** Put the TPSO monthly price JSON file in `data_raw/`, set `.env`, then:
+
+```bash
+python import_data.py data_raw/<file>.json
+```
+
+Rows are written the same way as the existing data: `id` = the TPSO record id, `store_name` = `สนค. (<typeName>)`, `availability` = `available`, `price_basis` = `tpso_reference`, `price_period` = `<curYear>-<MM>` in the Buddhist year (e.g. `2569-10`), `retrieved_date` = date of `createdAt`, plus a `tpso_price` row with the same `id`. Rows whose `id` is already in the database are skipped, so re-running is safe; rows without a valid id, price or month are rejected and counted. Several files can be given at once. `db.py` holds the shared connection (`get_connection()`).
+
+**Update the shared dump (database owner, after adding real data).** In Workbench: Server → Data Export → tick `boq_intelligence` → Dump Structure and Data → Export to Self-Contained File → tick Include Create Schema → Start Export. Or:
+
+```bash
+mysqldump -u root -p --databases boq_intelligence --no-tablespaces --set-gtid-purged=OFF > db/boq_intelligence_dump.sql
+```
+
+Commit it on a branch and open a pull request.
+
+Rules:
+
+- Change tables only by editing `schema.sql` (and the Workbench model) on your branch and opening a pull request. Do not change tables only in your own MySQL.
+- After a schema change is merged, make a new dump; everyone re-imports it.
+- Dumps must contain real data only. Share a dump over 50 MB through Google Drive instead of git (GitHub rejects files over 100 MB).
+- `.env` (your MySQL password) is never committed.
 
 ## Main menu
 
