@@ -59,6 +59,14 @@ Each team member runs MySQL 8 on their own computer. Git carries the structure (
 mysql -u root -p < schema.sql
 ```
 
+**Load real TPSO prices.** Put the TPSO monthly price JSON file in `data_raw/`, set `.env`, then:
+
+```bash
+python import_data.py data_raw/<file>.json
+```
+
+Each price row becomes one `master_product` row (`source = 'TPSO'`, `store_name = 'TPSO'`, `availability = 'available'`, `price_basis = 'cash_ex_vat_ex_delivery'`, `price_period` = `YYYY-MM` in C.E.) plus one `tpso_price` row with the same `id`. Rows already in the database (same `commodityCode`, `curYear`, `curMonth`, `type`) are skipped, so re-running is safe; rows without a valid price or month are rejected and counted. Several files (months) can be given at once. `db.py` holds the shared connection (`get_connection()`).
+
 **Export a dump (the person who has the data).** In Workbench: Server → Data Export → tick `boq_intelligence` → Export to Self-Contained File → tick Include Create Schema → Start Export. Or:
 
 ```bash
