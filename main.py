@@ -31,7 +31,8 @@ def run_report():
 
 def show_database_status():
     """Row count of each table and the TPSO months loaded: a quick setup check."""
-    for table in ("master_product", "tpso_price", "material_prices_long", "user_input_batch"):
+    for table in ("master_product", "tpso_price", "material_prices_long", "user_input_batch",
+                  "user_input_line"):
         count = query(f"SELECT COUNT(*) AS n FROM {table}")[0]["n"]
         print(f"  {table:<22} {count:>8,} แถว")
     months = query("SELECT DISTINCT price_period FROM master_product"
