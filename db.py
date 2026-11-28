@@ -27,3 +27,41 @@ def get_connection():
     if os.getenv("DB_SSL_CA"):
         config["ssl_ca"] = os.getenv("DB_SSL_CA")
     return mysql.connector.connect(**config)
+
+
+def query(sql, params=()):
+    """Run a SELECT and return a list of dicts, e.g.
+
+        rows = query("SELECT product_name, price FROM master_product WHERE source = %s", ("TPSO",))
+        for row in rows:
+            print(row["product_name"], row["price"])
+
+    Always pass values through params (the %s placeholders), never by building the SQL
+    string yourself, so user input cannot break the query.
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        cursor.close()
+        return rows
+    finally:
+        conn.close()
+
+
+def execute(sql, params=()):
+    """Run one INSERT / UPDATE / DELETE, commit it, and return the new row id (or row count)."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        conn.commit()
+        result = cursor.lastrowid or cursor.rowcount
+        cursor.close()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
