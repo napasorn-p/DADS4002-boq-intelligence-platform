@@ -51,33 +51,48 @@ Retailer links:
 
 > **Schema changed (2026-11-28).** `schema.sql` now holds the Workbench design: `master_product`, `tpso_price`, `material_prices_long`, `user_input_batch` (diagram: `docs/er_diagram.png`, model: `docs/boq_model.mwb`, notes: `docs/ER_Diagram.md`). The Python code in `boq_platform/`, `main.py` and `menus/` was written for the previous 9-table schema (`price_sources`, `materials`, `price_observations`, `boq_items`, …) and **will not run against the new database until it is rewritten**. The previous schema is in git history (commit `d98bc44`).
 
-Each team member runs MySQL 8 on their own computer. Git carries the structure (`schema.sql`); data moves between team members as a dump file.
+Each team member runs MySQL 8 on their own computer. Git carries the structure (`schema.sql`) and the team's shared data (`db/boq_intelligence_dump.sql`).
 
-**Create empty tables from `schema.sql`.** In MySQL Workbench: File → Open SQL Script → `schema.sql` → Execute (⚡). Or:
+**Get the team database (start here).** Import `db/boq_intelligence_dump.sql`. It creates `boq_intelligence` with all tables and data. In Workbench: Server → Data Import → Import from Self-Contained File → choose `db/boq_intelligence_dump.sql` → Start Import. Or:
+
+```bash
+mysql -u root -p < db/boq_intelligence_dump.sql
+```
+
+Importing again replaces the tables with the dump's copy (your own changes in those tables are lost).
+
+What the dump contains (made 2026-11-28 from the database owner's Workbench):
+
+| Table | Rows | Content |
+|---|---|---|
+| `master_product` | 5,535 | 5,461 TPSO + 74 retail |
+| `tpso_price` | 5,461 | TPSO ส่วนกลาง, ต.ค. 2569 (one month), cash price excl. VAT and delivery |
+| `material_prices_long` | 74 | HomePro 37, เฮียเชษฐ 37, read from the stores' web pages in Nov 2569; 34 of them have no price (`not_sold`, `not_found`, `quote_only`) |
+| `user_input_batch` | 0 | filled by the program |
+
+111 retail rows marked `estimate` (ไทวัสดุ, โกลบอลเฮ้าส์, ดูโฮม: unverified estimates from an old Excel file) and one test row in `user_input_batch` were left out, because the project uses real observed data only.
+
+**Empty tables only.** In Workbench: File → Open SQL Script → `schema.sql` → Execute (⚡). Or:
 
 ```bash
 mysql -u root -p < schema.sql
 ```
 
-**Load real TPSO prices.** Put the TPSO monthly price JSON file in `data_raw/`, set `.env`, then:
+**Add another TPSO month.** Put the TPSO monthly price JSON file in `data_raw/`, set `.env`, then:
 
 ```bash
 python import_data.py data_raw/<file>.json
 ```
 
-Each price row becomes one `master_product` row (`source = 'TPSO'`, `store_name = 'TPSO'`, `availability = 'available'`, `price_basis = 'cash_ex_vat_ex_delivery'`, `price_period` = `YYYY-MM` in C.E.) plus one `tpso_price` row with the same `id`. Rows already in the database (same `commodityCode`, `curYear`, `curMonth`, `type`) are skipped, so re-running is safe; rows without a valid price or month are rejected and counted. Several files (months) can be given at once. `db.py` holds the shared connection (`get_connection()`).
+Rows are written the same way as the existing data: `id` = the TPSO record id, `store_name` = `สนค. (<typeName>)`, `availability` = `available`, `price_basis` = `tpso_reference`, `price_period` = `<curYear>-<MM>` in the Buddhist year (e.g. `2569-10`), `retrieved_date` = date of `createdAt`, plus a `tpso_price` row with the same `id`. Rows whose `id` is already in the database are skipped, so re-running is safe; rows without a valid id, price or month are rejected and counted. Several files can be given at once. `db.py` holds the shared connection (`get_connection()`).
 
-**Export a dump (the person who has the data).** In Workbench: Server → Data Export → tick `boq_intelligence` → Export to Self-Contained File → tick Include Create Schema → Start Export. Or:
-
-```bash
-mysqldump -u root -p --databases boq_intelligence --no-tablespaces --set-gtid-purged=OFF > boq_intelligence_dump.sql
-```
-
-**Import a dump.** In Workbench: Server → Data Import → Import from Self-Contained File → Start Import. Or:
+**Update the shared dump (database owner, after adding real data).** In Workbench: Server → Data Export → tick `boq_intelligence` → Dump Structure and Data → Export to Self-Contained File → tick Include Create Schema → Start Export. Or:
 
 ```bash
-mysql -u root -p < boq_intelligence_dump.sql
+mysqldump -u root -p --databases boq_intelligence --no-tablespaces --set-gtid-purged=OFF > db/boq_intelligence_dump.sql
 ```
+
+Commit it on a branch and open a pull request.
 
 Rules:
 
