@@ -32,19 +32,19 @@ DROP TABLE IF EXISTS `master_product`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `master_product` (
   `id` int NOT NULL,
-  `source` enum('TPSO','RETAIL') COLLATE utf8mb4_unicode_ci NOT NULL,
-  `store_name` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `commodity_code` char(16) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `source` enum('TPSO','RETAIL') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `store_name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `commodity_code` char(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `item_id` int DEFAULT NULL,
-  `category` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `product_name` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `unit` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `category` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `product_name` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `unit` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `quantity` decimal(12,2) DEFAULT NULL,
   `price` decimal(14,2) DEFAULT NULL,
-  `availability` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `price_basis` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `note` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `price_period` char(7) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `availability` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `price_basis` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `note` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `price_period` char(7) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `retrieved_date` date DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_commodity` (`commodity_code`),
@@ -75,15 +75,15 @@ DROP TABLE IF EXISTS `material_prices_long`;
 CREATE TABLE `material_prices_long` (
   `id` int NOT NULL,
   `item_id` int NOT NULL,
-  `category` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `item_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `unit` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `category` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `item_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `unit` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `quantity` decimal(12,2) NOT NULL,
-  `store_name` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `store_name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `price` decimal(12,2) DEFAULT NULL,
-  `availability` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `price_basis` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `note` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `availability` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `price_basis` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `note` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `retrieved_date` date DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_item_store` (`item_id`,`store_name`),
@@ -112,10 +112,10 @@ DROP TABLE IF EXISTS `tpso_price`;
 CREATE TABLE `tpso_price` (
   `id` int NOT NULL,
   `type` tinyint NOT NULL,
-  `typeName` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `commodityCode` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `commodityNameTH` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `unitName` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `typeName` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `commodityCode` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `commodityNameTH` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `unitName` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `curMonth` tinyint NOT NULL,
   `curYear` smallint NOT NULL,
   `priceCur` decimal(14,2) NOT NULL,
@@ -147,14 +147,14 @@ DROP TABLE IF EXISTS `user_input_batch`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `user_input_batch` (
   `batch_id` int NOT NULL AUTO_INCREMENT,
-  `input_method` enum('manual','csv') COLLATE utf8mb4_unicode_ci NOT NULL,
-  `project_name` varchar(150) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `file_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `created_by` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `input_method` enum('manual','csv') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `project_name` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `file_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_by` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `total_rows` int NOT NULL DEFAULT '0',
   `error_rows` int NOT NULL DEFAULT '0',
-  `status` enum('draft','validated','has_error','confirmed') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'draft',
+  `status` enum('draft','validated','has_error','confirmed') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'draft',
   PRIMARY KEY (`batch_id`),
   CONSTRAINT `chk_csv_file` CHECK (((`input_method` <> _utf8mb4'csv') or (`file_name` is not null)))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -167,6 +167,42 @@ CREATE TABLE `user_input_batch` (
 LOCK TABLES `user_input_batch` WRITE;
 /*!40000 ALTER TABLE `user_input_batch` DISABLE KEYS */;
 /*!40000 ALTER TABLE `user_input_batch` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `user_input_line`
+--
+
+DROP TABLE IF EXISTS `user_input_line`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_input_line` (
+  `line_id` int NOT NULL AUTO_INCREMENT,
+  `batch_id` int NOT NULL,
+  `line_no` int NOT NULL,
+  `product_id` int DEFAULT NULL,
+  `item_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `unit` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `quantity` decimal(12,2) NOT NULL,
+  `unit_price` decimal(14,2) DEFAULT NULL,
+  `note` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`line_id`),
+  UNIQUE KEY `uq_batch_line` (`batch_id`,`line_no`),
+  KEY `idx_product` (`product_id`),
+  CONSTRAINT `fk_line_batch` FOREIGN KEY (`batch_id`) REFERENCES `user_input_batch` (`batch_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_line_product` FOREIGN KEY (`product_id`) REFERENCES `master_product` (`id`),
+  CONSTRAINT `chk_line_price` CHECK (((`unit_price` is null) or (`unit_price` >= 0))),
+  CONSTRAINT `chk_line_quantity` CHECK ((`quantity` > 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `user_input_line`
+--
+
+LOCK TABLES `user_input_line` WRITE;
+/*!40000 ALTER TABLE `user_input_line` DISABLE KEYS */;
+/*!40000 ALTER TABLE `user_input_line` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
