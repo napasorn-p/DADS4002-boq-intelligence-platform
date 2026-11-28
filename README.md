@@ -1,28 +1,20 @@
-# BOQ Intelligence Platform - MVP
+# BOQ Intelligence Platform
 
-Python + MySQL workflow for importing a BOQ, comparing its material lines with official and retailer price observations, recording explainable matching evidence, and presenting SQL-based insights with next actions. The primary interface is `main.py`; the Jupyter notebook demonstrates the same modules. No Streamlit application is included.
+DADS 4002 Programming Project 1/2569 (Python + MySQL, กลุ่ม 3 คน). ระบบวิเคราะห์ราคาวัสดุก่อสร้างและประมาณราคา BOQ จากข้อมูลราคาจริงของ สนค. (index-api.tpso.go.th) และราคาร้านค้า ใช้งานผ่านเมนูบน command line: `python main.py` (ไม่มี GUI)
 
-## Data scope
+## เริ่มต้นสำหรับสมาชิกทีม
 
-- **Official source (Dataset 2):** TPSO/MOC monthly construction-material prices, imported from a saved JSON file in the TPSO monthly price layout (`commodityCode`, `commodityNameTH`, `unitName`, `curYear` (พ.ศ.), `curMonth`, `priceCur`, `type`, `typeName`). The file used for development is `10.json`: area `10` = ส่วนกลาง, October 2569 (2026), 5,461 commodities. Prices are cash prices **excluding VAT and delivery**; the system adds 7% VAT (`VAT_RATE`) before comparing them with BOQ prices.
-  - Put the file in `data_raw/` (git-ignored, per the team rule) and import it with menu 2 → option 1. Every team member needs their own copy of the file.
-  - The online endpoint `dataapi.moc.go.th/csi-indexes` was tested on 2026-11-23: it returns a national price **index** (`index_id`, `price_index`, base year 2015) and ignores `province_code`/`com_code`, so it cannot supply unit prices. Menu 2 → option 2 is kept only for reference.
-  - With one month of data, month-to-month trend actions (`MONITOR_PRICE`) appear only after a second month's file is imported.
-- **Retail price snapshots:** Thai Watsadu, HomePro, DoHome, Global House and Hiachet. The MVP imports a standardized CSV snapshot or user quote. It does not scrape websites. Store pages, branch, observation date, product specification, unit, VAT and shipping must be recorded before prices are compared.
-- The monthly price file follows the TPSO layout of Dataset 1/8 (index.tpso.go.th); it is loaded once, as the official Dataset 2 source, and never a second time from another feed. National construction material index (Dataset 3) and standard construction prices (Dataset 4) are not mixed into the unit-price table. BOQCraft is a workflow reference, not a dataset.
+**ติดตั้งครั้งแรก (ทำครั้งเดียว)**
 
-Retailer links:
+1. ติดตั้ง [Git](https://git-scm.com/downloads), [Python 3.10+](https://www.python.org/downloads/) (Windows: ติ๊ก "Add Python to PATH") และ [MySQL 8 + Workbench](https://dev.mysql.com/downloads/)
+2. Clone โปรเจคแล้วเข้าโฟลเดอร์:
 
-- <https://www.thaiwatsadu.com/>
-- <https://www.homepro.co.th/>
-- <https://www.dohome.co.th/>
-- <https://globalhouse.co.th/>
-- <https://www.hiachet.com/>
+   ```bash
+   git clone https://github.com/napasorn-p/DADS4002-boq-intelligence-platform.git
+   cd DADS4002-boq-intelligence-platform
+   ```
 
-## Setup
-
-1. Install Python 3.10+ and MySQL 8+. (Check with `python -V` inside the virtual environment.)
-2. Create and activate a virtual environment, then install dependencies:
+3. สร้าง virtual environment แล้วติดตั้งไลบรารี:
 
    ```bash
    python -m venv .venv
@@ -31,25 +23,86 @@ Retailer links:
    pip install -r requirements.txt
    ```
 
-3. Copy `.env.example` to `.env` and enter the MySQL connection settings.
-4. Set `DB_NAME=boq_intelligence` in `.env`, then build the database one of two ways (see [Database](#database)):
-   - from a teammate's dump file (structure + data), or
-   - from `schema.sql` (structure only, empty tables).
-5. Start the integrated Python interface:
+4. Import ฐานข้อมูลทีม: Workbench → Server → Data Import → Import from Self-Contained File → เลือก `db/boq_intelligence_dump.sql` → Start Import
+5. คัดลอก `.env.example` เป็น `.env` แล้วใส่ `DB_USER` / `DB_PASSWORD` ของ MySQL ในเครื่องตัวเอง (`DB_NAME=boq_intelligence`)
+6. รัน `python main.py` แล้วเลือกเมนู 5 ต้องเห็น `master_product 5,535 แถว` ถ้าเห็นแปลว่าพร้อมทำงาน
 
-   ```bash
-   python main.py
-   ```
+**ทุกครั้งที่เริ่มงาน**
 
-6. To demonstrate the complete workflow in Jupyter:
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/<ชื่อ>      # ครั้งแรก; ครั้งต่อไปใช้ git checkout feature/<ชื่อ> แล้ว git merge main
+```
 
-   ```bash
-   jupyter lab notebooks/BOQ_Intelligence_MVP.ipynb
-   ```
+เขียนโค้ดเฉพาะไฟล์ของตัวเอง แล้ว commit ทีละน้อย:
+
+```bash
+git add <ไฟล์ของตัวเอง>
+git commit -m "อธิบายสั้น ๆ ว่าเปลี่ยนอะไร"
+git push -u origin feature/<ชื่อ>
+```
+
+เสร็จแต่ละส่วน: เปิด pull request จาก `feature/<ชื่อ>` เข้า `main` บน GitHub ให้เพื่อน approve 1 คน แล้ว merge
+
+## กติกาการทำงานร่วมกัน
+
+- ทุกคนทำงานบน branch `feature/<ชื่อ>` ที่แตกจาก `main`; `main` รับเฉพาะ pull request ที่มีคน approve
+- แก้เฉพาะไฟล์ที่ตนรับผิดชอบ (ตารางด้านล่าง)
+- `main.py` (รายการ `MENU`) และ `analytics/__init__.py` (รายการ `REPORTS`): แก้ได้เฉพาะบรรทัดที่ลงทะเบียนฟีเจอร์ของตน
+- ต่อฐานข้อมูลผ่าน `db.query()` / `db.execute()` / `db.get_connection()` และส่งค่าจากผู้ใช้ผ่าน `%s` เสมอ
+- แก้โครงสร้างตารางผ่าน `schema.sql` + pull request เท่านั้น (ดู [Database](#database))
+- ใช้ข้อมูลจริงเท่านั้น ห้ามใส่ราคาสมมติหรือข้อมูลทดสอบลงฐานหรือ dump
+- ห้าม commit `.env` และ `data_raw/`
+- commit ทีละน้อย พร้อมข้อความที่บอกว่าเปลี่ยนอะไร
+
+## ผู้รับผิดชอบ
+
+| คน | ชื่อ | ไฟล์ | Insight |
+|---|---|---|---|
+| 1 |  | `schema.sql`, `db.py`, `import_data.py`, `db/` (ฐานข้อมูลและการนำเข้า) |  |
+| 2 |  | `menus/search.py`, `menus/basket.py` (ค้นหา, ประมาณราคา BOQ) |  |
+| 3 |  | `analytics/`, `menus/exporter.py` (รายงานวิเคราะห์, ส่งออก) |  |
+
+## โครงสร้างโปรเจค
+
+```
+main.py               เมนูหลัก: เรียกฟีเจอร์ของแต่ละคนผ่านรายการ MENU (เมนู 5 = ตรวจฐานข้อมูล)
+db.py                 get_connection(), query(), execute() ต่อ MySQL ตาม .env
+logger.py             get_logger() เขียน log ไปที่ logs/app.log
+import_data.py        เพิ่มราคา สนค. รายเดือนจากไฟล์ JSON
+schema.sql            โครงสร้าง 4 ตาราง
+db/boq_intelligence_dump.sql   ฐานข้อมูลทีม (โครงสร้าง + ข้อมูลจริง)
+menus/search.py       เมนู 1 ค้นหาวัสดุและราคา   (ยังไม่ได้ทำ)
+menus/basket.py       เมนู 2 ประมาณราคา BOQ      (ยังไม่ได้ทำ)
+menus/exporter.py     เมนู 4 ส่งออกข้อมูล         (ยังไม่ได้ทำ)
+analytics/            เมนู 3 รายงานวิเคราะห์ (ลงทะเบียนใน REPORTS)
+templates/            ตัวอย่างไฟล์ BOQ / ราคาร้านค้า (CSV)
+docs/                 ER diagram (png, Workbench model) และคำอธิบาย
+legacy/               โค้ดร่างแรกสำหรับ schema เก่า: ใช้อ้างอิง/คัดลอก ไม่ได้ถูกเรียก
+scripts/, tests/      สคริปต์เสริม, ไฟล์ทดสอบ
+```
+
+โฟลเดอร์ที่ไม่ขึ้น git: `.env`, `data_raw/`, `logs/`, `exports/`, `.venv/`
+
+## Data scope
+
+- **Official source (Dataset 2):** TPSO/MOC monthly construction-material prices, imported from a saved JSON file in the TPSO monthly price layout (`commodityCode`, `commodityNameTH`, `unitName`, `curYear` (พ.ศ.), `curMonth`, `priceCur`, `type`, `typeName`). The file used for development is `10.json`: area `10` = ส่วนกลาง, October 2569 (2026), 5,461 commodities. Prices are cash prices **excluding VAT and delivery**.
+  - The month already loaded is in `db/boq_intelligence_dump.sql`. To add more months, put the JSON files in `data_raw/` (git-ignored) and run `import_data.py` (see [Database](#database)).
+  - The online endpoint `dataapi.moc.go.th/csi-indexes` was tested on 2026-11-23: it returns a national price **index** (`index_id`, `price_index`, base year 2015) and ignores `province_code`/`com_code`, so it cannot supply unit prices.
+  - Only one month (ต.ค. 2569) is loaded so far; month-to-month trends need more months.
+- **Retail prices:** HomePro and เฮียเชษฐ prices read from the stores' web pages (Nov 2569), 74 rows in `material_prices_long`. Other stores (ไทวัสดุ, โกลบอลเฮ้าส์, ดูโฮม) have no verified prices yet; unverified estimates were left out. Websites are not scraped automatically.
+- National construction material index (Dataset 3) and standard construction prices (Dataset 4) are not mixed into the price tables. BOQCraft is a workflow reference, not a dataset.
+- **Real data only.** Never add made-up, sample or estimated prices to the database or the dump.
 
 ## Database
 
-> **Schema changed (2026-11-28).** `schema.sql` now holds the Workbench design: `master_product`, `tpso_price`, `material_prices_long`, `user_input_batch` (diagram: `docs/er_diagram.png`, model: `docs/boq_model.mwb`, notes: `docs/ER_Diagram.md`). The Python code in `boq_platform/`, `main.py` and `menus/` was written for the previous 9-table schema (`price_sources`, `materials`, `price_observations`, `boq_items`, …) and **will not run against the new database until it is rewritten**. The previous schema is in git history (commit `d98bc44`).
+Tables (diagram: `docs/er_diagram.png`, model: `docs/boq_model.mwb`, notes: `docs/ER_Diagram.md`):
+
+- `master_product`: every price, TPSO or retail (`source`), one row per product per period
+- `tpso_price`: TPSO fields, same `id` as its `master_product` row
+- `material_prices_long`: retail store fields, same `id` as its `master_product` row
+- `user_input_batch`: one row per BOQ input session (manual or CSV)
 
 Each team member runs MySQL 8 on their own computer. Git carries the structure (`schema.sql`) and the team's shared data (`db/boq_intelligence_dump.sql`).
 
@@ -101,41 +154,14 @@ Rules:
 - Dumps must contain real data only. Share a dump over 50 MB through Google Drive instead of git (GitHub rejects files over 100 MB).
 - `.env` (your MySQL password) is never committed.
 
-## Main menu
+## ฟีเจอร์ของระบบ
 
-1. Create a project using `house`, `room`, or `item` scope.
-2. Import Dataset 2 from the TPSO monthly JSON file (option 1, recommended). A copy is kept in `data_raw/`; re-importing is safe (unchanged rows are skipped, corrected prices update the same row).
-3. Import retailer prices or quotations using `templates/retail_prices_template.csv`. Re-importing the same file is safe: unchanged rows are skipped and corrected prices update the existing row.
-4. Import a BOQ file, `.xlsx` or `.csv` (required fields: item/material name, quantity, unit; optional specification, unit price, room and MOC material code). `templates/boq_template.csv` can be filled in and imported directly.
-5. Enter BOQ lines manually; type `DONE` to finish.
-6. Read/update/soft-delete BOQ lines. Soft delete keeps match evidence and audit history. When editing, leave a field blank to keep it or type `-` to clear the BOQ unit price.
-7. Display SQL-based cost insights: BOQ vs official Dataset 2 price, top-cost lines, retailer Top 3 and action plans.
-8. Review observations held for a human quality decision.
-9. Check row counts against the course's 30-row rule.
-10. Match retailer prices that could not be tied to a material. The store SKU is remembered, so the next snapshot from that store matches automatically.
+รอตัดสินใจ
 
-## Comparison rules
+## Insight และ action plan
 
-- **BOQ vs official price (Dataset 2):** each matched BOQ line is compared with the latest official monthly price (plus VAT) for the same material, unit and project area. Use project area code `10` for the ส่วนกลาง file. Units are never converted: steel is priced per ตัน in Dataset 2, so a BOQ line in เส้น will not be compared until its unit matches. The fastest way to match is to put the 16-digit TPSO code in the BOQ `material_code` column. BOQ prices more than 10% above it raise `NEGOTIATE_PRICE`; more than 10% below raise `CHECK_UNDERBUDGET`.
-- **Getting retailer prices into Top 3:** a retailer row is matched only by (1) a store SKU already confirmed for that store, (2) the `moc_com_code` column in the CSV, or (3) an exact MOC name/alias with the same unit. Store product names rarely equal MOC names, so fill `moc_com_code`, or confirm unmatched rows once in menu 10.
-- Retailer comparisons require a matched canonical material, identical normalized unit, a fresh snapshot, a VAT-inclusive price and matching project province (or an explicitly unlocated online snapshot when the project has no province).
-- A store can be ranked by total basket only if it has comparable prices for every active matched BOQ line. Partial coverage is shown but is not called the cheapest total basket.
-- Retailer basket totals are product-price subtotals and exclude shipping, which can be order/branch-specific. Estimated savings are calculated only against BOQ lines with reference prices and a complete comparable retailer basket. This is an estimate, not realized savings; verify stock, specifications and delivery with the seller.
-- Exact code/name/alias matches with compatible units can be auto-matched. Fuzzy names are suggestions requiring user review. Every candidate decision is stored in `match_events` and appended to `logs/match_audit.jsonl`.
+รอตัดสินใจ
 
-## Append-only logs and output
+## การใช้ AI coding (Claude Code) และ version control
 
-- `logs/audit.jsonl`: imports, rejects, project/BOQ changes and application events.
-- `logs/match_audit.jsonl`: each candidate match, evidence, score and user/system decision.
-- Both files append one JSON event per line. Do not clear them during the demo.
-- Events raised inside a database transaction are written after it ends; if it was rolled back, the line carries `"transaction": "rolled_back"`, so the log never claims a change that is not in the database.
-- Excel insight exports go to `exports/`.
-- Raw downloaded official responses go to `data_raw/`; those folders are git-ignored.
-
-## MVP limitations
-
-- Menu 9 reports row counts. The course brief expects 30+ rows in each non-reference table. Populate with genuine historical prices, real BOQ lines and observed matching decisions; never create synthetic records to reach the threshold. The small price-source registry is a limited reference table.
-- Retail prices are snapshots supplied by a user-maintained CSV or quotation; site automation is not included.
-- Unit conversion is intentionally conservative. Unverified package conversions are not performed.
-- The official API price is a provincial average and is not the same as an individual retailer's delivered quote.
-- No quantity takeoff from PDF drawings is included. Users must provide quantities in BOQ/Excel or enter them.
+(เว้นไว้เติมบทเรียนภายหลัง)
