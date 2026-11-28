@@ -1,169 +1,88 @@
--- MySQL 8+ schema for BOQ Intelligence Platform MVP.
--- Data-source observations retain the original source and observation date.
+-- schema.sql
+-- BOQ Intelligence Platform: database structure (MySQL 8.0.16+).
+-- Source design: MySQL Workbench model docs/boq_model.mwb (ER diagram: docs/er_diagram.png).
+--
+-- Tables
+--   master_product        one row per product price, from TPSO or a retail store
+--   tpso_price            TPSO monthly price fields, 1:1 with master_product (same id)
+--   material_prices_long  retail store prices, 1:1 with master_product (same id)
+--   user_input_batch      one row per BOQ input session (manual entry or CSV upload)
+--
+-- Structure only: this file holds no data. Safe to run again; existing tables are kept.
+-- To rebuild from scratch: DROP DATABASE boq_intelligence; then run this file.
 
 CREATE DATABASE IF NOT EXISTS boq_intelligence
-  CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE boq_intelligence;
 
-CREATE TABLE IF NOT EXISTS price_sources (
-    source_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    source_name VARCHAR(120) NOT NULL,
-    source_kind ENUM('official','retailer','user_quote') NOT NULL,
-    dataset_no TINYINT UNSIGNED NULL,
-    base_url VARCHAR(500) NULL,
-    collection_method VARCHAR(60) NOT NULL DEFAULT 'manual_snapshot',
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    PRIMARY KEY (source_id),
-    UNIQUE KEY uq_price_sources_name (source_name)
-) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS master_product (
+  id int NOT NULL,
+  source enum('TPSO','RETAIL') NOT NULL,
+  store_name varchar(50) NOT NULL,
+  commodity_code char(16) DEFAULT NULL,
+  item_id int DEFAULT NULL,
+  category varchar(100) DEFAULT NULL,
+  product_name varchar(500) NOT NULL,
+  unit varchar(30) NOT NULL,
+  quantity decimal(12,2) DEFAULT NULL,
+  price decimal(14,2) DEFAULT NULL,
+  availability varchar(20) NOT NULL,
+  price_basis varchar(40) DEFAULT NULL,
+  note varchar(500) DEFAULT NULL,
+  price_period char(7) NOT NULL,
+  retrieved_date date DEFAULT NULL,
+  PRIMARY KEY (id),
+  KEY idx_commodity (commodity_code),
+  KEY idx_item (item_id),
+  KEY idx_store (store_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS materials (
-    material_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    material_code VARCHAR(64) NULL,
-    canonical_name VARCHAR(255) NOT NULL,
-    category_name VARCHAR(120) NULL,
-    specification VARCHAR(255) NULL,
-    standard_unit VARCHAR(40) NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (material_id),
-    UNIQUE KEY uq_material_code (material_code),
-    KEY ix_material_name (canonical_name)
-) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS tpso_price (
+  id int NOT NULL,
+  type tinyint NOT NULL,
+  typeName varchar(50) NOT NULL,
+  commodityCode varchar(16) NOT NULL,
+  commodityNameTH varchar(255) NOT NULL,
+  unitName varchar(30) NOT NULL,
+  curMonth tinyint NOT NULL,
+  curYear smallint NOT NULL,
+  priceCur decimal(14,2) NOT NULL,
+  priceVAT decimal(14,2) DEFAULT NULL,
+  createdAt datetime(6) NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_commodity (commodityCode),
+  CONSTRAINT fk_tpso_master FOREIGN KEY (id) REFERENCES master_product (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS material_aliases (
-    alias_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    material_id BIGINT UNSIGNED NOT NULL,
-    source_id BIGINT UNSIGNED NULL,
-    alias_text VARCHAR(255) NOT NULL,
-    alias_normalized VARCHAR(255) NOT NULL,
-    source_product_code VARCHAR(100) NULL,
-    PRIMARY KEY (alias_id),
-    KEY ix_alias_normalized (alias_normalized),
-    KEY ix_alias_product_code (source_product_code),
-    CONSTRAINT fk_alias_material FOREIGN KEY (material_id) REFERENCES materials(material_id),
-    CONSTRAINT fk_alias_source FOREIGN KEY (source_id) REFERENCES price_sources(source_id)
-) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS material_prices_long (
+  id int NOT NULL,
+  item_id int NOT NULL,
+  category varchar(100) NOT NULL,
+  item_name varchar(255) NOT NULL,
+  unit varchar(30) NOT NULL,
+  quantity decimal(12,2) NOT NULL,
+  store_name varchar(50) NOT NULL,
+  price decimal(12,2) DEFAULT NULL,
+  availability varchar(20) NOT NULL,
+  price_basis varchar(40) DEFAULT NULL,
+  note varchar(500) DEFAULT NULL,
+  retrieved_date date DEFAULT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_item_store (item_id, store_name),
+  KEY idx_store (store_name),
+  CONSTRAINT fk_retail_master FOREIGN KEY (id) REFERENCES master_product (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS price_observations (
-    observation_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    source_id BIGINT UNSIGNED NOT NULL,
-    material_id BIGINT UNSIGNED NULL,
-    source_record_hash CHAR(64) NOT NULL,
-    source_product_code VARCHAR(100) NULL,
-    product_name VARCHAR(255) NOT NULL,
-    brand VARCHAR(120) NULL,
-    specification VARCHAR(255) NULL,
-    province_code VARCHAR(8) NULL,
-    province_name VARCHAR(100) NULL,
-    branch_name VARCHAR(150) NULL,
-    observation_date DATE NOT NULL,
-    period_year SMALLINT UNSIGNED NULL,
-    period_month TINYINT UNSIGNED NULL,
-    unit VARCHAR(40) NOT NULL,
-    price DECIMAL(14,4) NOT NULL,
-    regular_price DECIMAL(14,4) NULL,
-    vat_included BOOLEAN NULL,
-    shipping_fee DECIMAL(14,4) NULL,
-    stock_status VARCHAR(40) NULL,
-    promotion_label VARCHAR(255) NULL,
-    product_url VARCHAR(1000) NULL,
-    quality_status ENUM('valid','review','rejected') NOT NULL DEFAULT 'review',
-    quality_note VARCHAR(500) NULL,
-    raw_fields JSON NULL,
-    retrieved_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (observation_id),
-    UNIQUE KEY uq_source_record_hash (source_id, source_record_hash),
-    KEY ix_price_material_date (material_id, observation_date),
-    KEY ix_price_source_date (source_id, observation_date),
-    CONSTRAINT fk_price_source FOREIGN KEY (source_id) REFERENCES price_sources(source_id),
-    CONSTRAINT fk_price_material FOREIGN KEY (material_id) REFERENCES materials(material_id),
-    CONSTRAINT ck_price_nonnegative CHECK (price >= 0),
-    CONSTRAINT ck_month_range CHECK (period_month IS NULL OR period_month BETWEEN 1 AND 12)
-) ENGINE=InnoDB;
-
-CREATE TABLE IF NOT EXISTS boq_projects (
-    project_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    project_name VARCHAR(200) NOT NULL,
-    scope_type ENUM('house','room','item') NOT NULL,
-    province_code VARCHAR(8) NULL,
-    province_name VARCHAR(100) NULL,
-    budget_total DECIMAL(16,2) NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (project_id)
-) ENGINE=InnoDB;
-
-CREATE TABLE IF NOT EXISTS project_rooms (
-    room_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    project_id BIGINT UNSIGNED NOT NULL,
-    room_name VARCHAR(120) NOT NULL,
-    -- '' instead of NULL: MySQL treats NULLs as distinct, so a NULL here would let
-    -- the same room be inserted again on every re-import.
-    floor_label VARCHAR(40) NOT NULL DEFAULT '',
-    PRIMARY KEY (room_id),
-    UNIQUE KEY uq_project_room (project_id, room_name, floor_label),
-    CONSTRAINT fk_room_project FOREIGN KEY (project_id) REFERENCES boq_projects(project_id)
-) ENGINE=InnoDB;
-
-CREATE TABLE IF NOT EXISTS boq_items (
-    item_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    project_id BIGINT UNSIGNED NOT NULL,
-    room_id BIGINT UNSIGNED NULL,
-    material_id BIGINT UNSIGNED NULL,
-    source_row_no INT UNSIGNED NULL,
-    source_product_code VARCHAR(100) NULL,
-    input_name VARCHAR(255) NOT NULL,
-    input_specification VARCHAR(255) NULL,
-    quantity DECIMAL(14,4) NOT NULL,
-    input_unit VARCHAR(40) NOT NULL,
-    budget_unit_price DECIMAL(14,4) NULL,
-    match_status ENUM('AUTO_MATCHED','USER_CONFIRMED','NEEDS_REVIEW','UNMATCHED') NOT NULL DEFAULT 'UNMATCHED',
-    chosen_observation_id BIGINT UNSIGNED NULL,
-    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (item_id),
-    KEY ix_boq_project (project_id),
-    KEY ix_boq_material (material_id),
-    CONSTRAINT fk_boq_project FOREIGN KEY (project_id) REFERENCES boq_projects(project_id),
-    CONSTRAINT fk_boq_room FOREIGN KEY (room_id) REFERENCES project_rooms(room_id),
-    CONSTRAINT fk_boq_material FOREIGN KEY (material_id) REFERENCES materials(material_id),
-    CONSTRAINT fk_boq_chosen_observation FOREIGN KEY (chosen_observation_id) REFERENCES price_observations(observation_id),
-    CONSTRAINT ck_boq_quantity_positive CHECK (quantity > 0),
-    CONSTRAINT ck_boq_budget_nonnegative CHECK (budget_unit_price IS NULL OR budget_unit_price >= 0)
-) ENGINE=InnoDB;
-
-CREATE TABLE IF NOT EXISTS match_events (
-    match_event_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    project_id BIGINT UNSIGNED NULL,
-    item_id BIGINT UNSIGNED NULL,
-    observation_id BIGINT UNSIGNED NULL,
-    input_name VARCHAR(255) NOT NULL,
-    input_specification VARCHAR(255) NULL,
-    input_unit VARCHAR(40) NULL,
-    candidate_material_id BIGINT UNSIGNED NULL,
-    candidate_name VARCHAR(255) NULL,
-    match_method VARCHAR(40) NOT NULL,
-    confidence_score DECIMAL(6,5) NULL,
-    decision_status VARCHAR(32) NOT NULL,
-    evidence_json JSON NULL,
-    actor VARCHAR(100) NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (match_event_id),
-    KEY ix_match_item_time (item_id, created_at),
-    CONSTRAINT fk_match_project FOREIGN KEY (project_id) REFERENCES boq_projects(project_id),
-    CONSTRAINT fk_match_item FOREIGN KEY (item_id) REFERENCES boq_items(item_id),
-    CONSTRAINT fk_match_observation FOREIGN KEY (observation_id) REFERENCES price_observations(observation_id),
-    CONSTRAINT fk_match_candidate FOREIGN KEY (candidate_material_id) REFERENCES materials(material_id)
-) ENGINE=InnoDB;
-
-INSERT INTO price_sources (source_name, source_kind, dataset_no, base_url, collection_method)
-VALUES
- ('MOC Open Data CSI', 'official', 2, 'https://data.moc.go.th/OpenData/CSIProductIndexes', 'api'),
- ('Thai Watsadu', 'retailer', 5, 'https://www.thaiwatsadu.com/', 'manual_snapshot'),
- ('HomePro', 'retailer', 6, 'https://www.homepro.co.th/', 'manual_snapshot'),
- ('DoHome', 'retailer', NULL, 'https://www.dohome.co.th/', 'manual_snapshot'),
- ('Global House', 'retailer', NULL, 'https://globalhouse.co.th/', 'manual_snapshot'),
- ('Hiachet', 'retailer', NULL, 'https://www.hiachet.com/', 'quote_or_manual_snapshot')
-ON DUPLICATE KEY UPDATE base_url = VALUES(base_url);
+CREATE TABLE IF NOT EXISTS user_input_batch (
+  batch_id int NOT NULL AUTO_INCREMENT,
+  input_method enum('manual','csv') NOT NULL,
+  project_name varchar(150) DEFAULT NULL,
+  file_name varchar(255) DEFAULT NULL,
+  created_by varchar(100) NOT NULL,
+  created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  total_rows int NOT NULL DEFAULT 0,
+  error_rows int NOT NULL DEFAULT 0,
+  status enum('draft','validated','has_error','confirmed') NOT NULL DEFAULT 'draft',
+  PRIMARY KEY (batch_id),
+  CONSTRAINT chk_csv_file CHECK ((input_method <> 'csv') OR (file_name IS NOT NULL))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
