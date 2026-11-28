@@ -1,0 +1,19 @@
+{
+  "name": "BOQ Intelligence Platform (Python + MySQL 8)",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "onCreateCommand": "bash .devcontainer/install.sh",
+  "postStartCommand": "bash scripts/setup_db.sh",
+  "remoteEnv": {
+    "PATH": "${containerWorkspaceFolder}/.venv/bin:${containerEnv:PATH}"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"],
+      "settings": {
+        "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
+        "python.testing.unittestEnabled": true,
+        "python.testing.unittestArgs": ["-v", "-s", "tests", "-p", "test_*.py"]
+      }
+    }
+  }
+}
