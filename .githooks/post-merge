@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# After `git pull`: refresh the local database if db/boq_intelligence_dump.sql changed.
+# Enabled in Codespaces by .devcontainer/install.sh (git config core.hooksPath .githooks).
+if command -v mysql >/dev/null 2>&1; then
+  bash "$(git rev-parse --show-toplevel)/scripts/setup_db.sh" || echo "[post-merge] setup_db.sh failed; run it by hand"
+fi

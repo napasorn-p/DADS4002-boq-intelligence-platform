@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python packages
+        run: pip install -r requirements.txt
+      - name: Start MySQL and import the team database
+        # GitHub's Ubuntu runner ships MySQL 8 with root password "root".
+        run: MYSQL_ROOT_OPTS="-uroot -proot" bash scripts/setup_db.sh
+      - name: Run tests
+        run: python -m unittest -v
