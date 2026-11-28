@@ -7,6 +7,7 @@
 --   tpso_price            TPSO monthly price fields, 1:1 with master_product (same id)
 --   material_prices_long  retail store prices, 1:1 with master_product (same id)
 --   user_input_batch      one row per BOQ input session (manual entry or CSV upload)
+--   user_input_line       one row per BOQ line in a batch (user-editable)
 --
 -- Structure only: this file holds no data. Safe to run again; existing tables are kept.
 -- To rebuild from scratch: DROP DATABASE boq_intelligence; then run this file.
@@ -85,4 +86,26 @@ CREATE TABLE IF NOT EXISTS user_input_batch (
   status enum('draft','validated','has_error','confirmed') NOT NULL DEFAULT 'draft',
   PRIMARY KEY (batch_id),
   CONSTRAINT chk_csv_file CHECK ((input_method <> 'csv') OR (file_name IS NOT NULL))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- One row per BOQ line a user enters by hand or uploads in a CSV. Users may create,
+-- edit and delete these rows (and their batch); the price tables above are read-only
+-- for them. product_id optionally links the line to a price in master_product.
+CREATE TABLE IF NOT EXISTS user_input_line (
+  line_id int NOT NULL AUTO_INCREMENT,
+  batch_id int NOT NULL,
+  line_no int NOT NULL,
+  product_id int DEFAULT NULL,
+  item_name varchar(255) NOT NULL,
+  unit varchar(30) NOT NULL,
+  quantity decimal(12,2) NOT NULL,
+  unit_price decimal(14,2) DEFAULT NULL,
+  note varchar(500) DEFAULT NULL,
+  PRIMARY KEY (line_id),
+  UNIQUE KEY uq_batch_line (batch_id, line_no),
+  KEY idx_product (product_id),
+  CONSTRAINT fk_line_batch FOREIGN KEY (batch_id) REFERENCES user_input_batch (batch_id) ON DELETE CASCADE,
+  CONSTRAINT fk_line_product FOREIGN KEY (product_id) REFERENCES master_product (id),
+  CONSTRAINT chk_line_quantity CHECK (quantity > 0),
+  CONSTRAINT chk_line_price CHECK (unit_price IS NULL OR unit_price >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

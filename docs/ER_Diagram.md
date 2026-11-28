@@ -8,6 +8,8 @@ Source of truth: `schema.sql`. Workbench model: `docs/boq_model.mwb`. Exported p
 erDiagram
     MASTER_PRODUCT ||--o| TPSO_PRICE : "TPSO detail (same id)"
     MASTER_PRODUCT ||--o| MATERIAL_PRICES_LONG : "retail detail (same id)"
+    USER_INPUT_BATCH ||--o{ USER_INPUT_LINE : "has lines (deleted together)"
+    MASTER_PRODUCT |o--o{ USER_INPUT_LINE : "reference price (optional)"
 
     MASTER_PRODUCT {
         int id PK
@@ -64,6 +66,19 @@ erDiagram
         int error_rows
         enum status
     }
+    USER_INPUT_LINE {
+        int line_id PK
+        int batch_id FK
+        int line_no "unique within batch"
+        int product_id FK "optional"
+        varchar item_name
+        varchar unit
+        decimal quantity "> 0"
+        decimal unit_price ">= 0 or empty"
+        varchar note
+    }
 ```
 
-`tpso_price` and `material_prices_long` use the same `id` as their `master_product` row (the foreign key is on the primary key), so each detail row belongs to exactly one master row. `user_input_batch` is not linked to the other tables yet.
+`tpso_price` and `material_prices_long` use the same `id` as their `master_product` row (the foreign key is on the primary key), so each detail row belongs to exactly one master row. `user_input_line` holds the BOQ lines users enter in the GUI (`app_gui.py`), by hand or from CSV; users may create, edit and delete batches and lines, while the price tables stay read-only for them. `product_id` optionally links a line to a price for comparison.
+
+> `er_diagram.png` and `boq_model.mwb` do not show `user_input_line` yet: add it in Workbench and re-export.
