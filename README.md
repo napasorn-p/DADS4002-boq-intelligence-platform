@@ -4,7 +4,24 @@ DADS 4002 Programming Project 1/2569 (Python + MySQL, กลุ่ม 3 คน).
 
 ## เริ่มต้นสำหรับสมาชิกทีม
 
-**ติดตั้งครั้งแรก (ทำครั้งเดียว)**
+**ทางที่ 1: GitHub Codespaces (แนะนำ ไม่ต้องติดตั้งอะไร)**
+
+1. ที่หน้า repo บน GitHub กด **Code → Codespaces → Create codespace on main**
+2. รอครั้งแรกประมาณ 3–5 นาที ระบบติดตั้ง MySQL 8, ไลบรารี Python, import ฐานข้อมูลทีม และสร้าง `.env` ให้เอง
+3. เปิด Terminal แล้วรัน:
+
+   ```bash
+   python main.py
+   ```
+
+   เลือกเมนู 5 ต้องเห็น `master_product 5,535 แถว`
+
+- เปิด Codespace ครั้งต่อไป MySQL จะเปิดเอง
+- `git pull` แล้ว dump ใน `db/` เปลี่ยน ฐานข้อมูลจะถูก import ใหม่เอง (ตารางกลับเป็นตาม dump)
+- ถ้าสร้าง Codespace ไว้ก่อนวันที่ 28 พ.ย. 2569: `git pull` แล้วกด F1 → **Codespaces: Rebuild Container** ครั้งเดียว
+- ถ้ามีอะไรค้าง ให้รัน `bash scripts/setup_db.sh` (รันซ้ำได้ ไม่เสียหาย)
+
+**ทางที่ 2: เครื่องตัวเอง (MySQL Workbench)**
 
 1. ติดตั้ง [Git](https://git-scm.com/downloads), [Python 3.10+](https://www.python.org/downloads/) (Windows: ติ๊ก "Add Python to PATH") และ [MySQL 8 + Workbench](https://dev.mysql.com/downloads/)
 2. Clone โปรเจคแล้วเข้าโฟลเดอร์:
@@ -23,9 +40,21 @@ DADS 4002 Programming Project 1/2569 (Python + MySQL, กลุ่ม 3 คน).
    pip install -r requirements.txt
    ```
 
-4. Import ฐานข้อมูลทีม: Workbench → Server → Data Import → Import from Self-Contained File → เลือก `db/boq_intelligence_dump.sql` → Start Import
+4. Import ฐานข้อมูลทีม: Workbench → Server → Data Import → Import from Self-Contained File → เลือก `db/boq_intelligence_dump.sql` → Start Import (ทำใหม่ทุกครั้งที่ dump ใน `db/` เปลี่ยน)
 5. คัดลอก `.env.example` เป็น `.env` แล้วใส่ `DB_USER` / `DB_PASSWORD` ของ MySQL ในเครื่องตัวเอง (`DB_NAME=boq_intelligence`)
-6. รัน `python main.py` แล้วเลือกเมนู 5 ต้องเห็น `master_product 5,535 แถว` ถ้าเห็นแปลว่าพร้อมทำงาน
+6. รัน `python main.py` แล้วเลือกเมนู 5 ต้องเห็น `master_product 5,535 แถว`
+
+**ทดสอบ (ทั้งสองทาง)**
+
+```bash
+python -m unittest -v
+```
+
+ต้องจบด้วย `OK` ทดสอบว่าต่อฐานได้, ข้อมูลครบ, ทุกเมนูรันได้ไม่ error และ `import_data.py` อ่านข้อมูลถูก ถ้าเมนูของใครพัง test `test_every_menu_item_runs` จะ fail (ดูรายละเอียดใน `logs/app.log`)
+
+- ฟีเจอร์ต้องกลับเมนูได้เมื่อผู้ใช้กด Enter เปล่า ๆ ตอน test ระบบจะป้อนค่าว่างให้ทุกคำถาม
+- เพิ่ม test ของฟีเจอร์ตัวเองได้ในไฟล์ใหม่ `tests/test_<ฟีเจอร์>.py`
+- **ทุก pull request GitHub จะรัน test ให้เอง** (แท็บ Checks / Actions) ถ้าขึ้นสีแดง ให้แก้ก่อน merge
 
 **ทุกครั้งที่เริ่มงาน**
 
@@ -80,7 +109,10 @@ analytics/            เมนู 3 รายงานวิเคราะห�
 templates/            ตัวอย่างไฟล์ BOQ / ราคาร้านค้า (CSV)
 docs/                 ER diagram (png, Workbench model) และคำอธิบาย
 legacy/               โค้ดร่างแรกสำหรับ schema เก่า: ใช้อ้างอิง/คัดลอก ไม่ได้ถูกเรียก
-scripts/, tests/      สคริปต์เสริม, ไฟล์ทดสอบ
+scripts/setup_db.sh   เปิด MySQL + import dump + สร้าง .env (Codespaces / Linux)
+tests/                python -m unittest -v
+.devcontainer/        ตั้งค่า Codespaces อัตโนมัติ
+.github/workflows/    รัน test ทุก pull request
 ```
 
 โฟลเดอร์ที่ไม่ขึ้น git: `.env`, `data_raw/`, `logs/`, `exports/`, `.venv/`
